@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BB Sonic Suite</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0a0800;
+  color: #FFFFFF;
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+#crt {
+  position: relative;
+  background: #0c0a02;
+  border: 1px solid #333333;
+  padding: 28px 36px;
+  max-width: 600px;
+  width: 100%;
+}
+
+#crt::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.06) 2px,
+    rgba(0, 0, 0, 0.06) 4px
+  );
+  pointer-events: none;
+  z-index: 10;
+}
+
+#display {
+  font-size: 15px;
+  line-height: 1.45;
+  white-space: pre;
+  user-select: none;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+}
+
+.tools {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 0;
+}
+
+.tool-link {
+  display: block;
+  text-decoration: none;
+  color: #FFFFFF;
+  border: 1px solid #555555;
+  padding: 16px 20px;
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 14px;
+  letter-spacing: 1px;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.tool-link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #FFFFFF;
+}
+
+.tool-name {
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.tool-desc {
+  font-size: 11px;
+  color: #999999;
+  text-shadow: none;
+}
+
+.footer {
+  font-size: 11px;
+  color: #555555;
+  text-align: center;
+  padding-top: 12px;
+  text-shadow: none;
+}
+
+.footer a {
+  color: #777777;
+  text-decoration: none;
+}
+
+.footer a:hover {
+  color: #FFFFFF;
+}
+</style>
+</head>
+<body>
+<div id="crt">
+<div style="text-align:center; padding: 24px 0 8px;">
+    <img src="bbsslogo.png" alt="BB Sonic Suite" style="max-width: 380px; width: 100%; height: auto;">
+  </div>
+
+  <div class="tools">
+    <a href="tapedeck.html" class="tool-link">
+      <div class="tool-name">► BB TAPEDECK v1.0</div>
+      <div class="tool-desc">Reel-to-reel recorder with variable speed, punch-in, and WAV export</div>
+    </a>
+    <a href="sampler.html" class="tool-link">
+      <div class="tool-name">► BB SAMPLER v1.0</div>
+      <div class="tool-desc">Chromatic sampler with bit crush, sample rate reduction, and trim controls</div>
+    </a>
+  </div>
+
+  <div class="footer">
+    Built with Web Audio API — no installs, no plugins, just open and play
+  </div>
+</div>
+</body>
+</html>

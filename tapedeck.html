@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BB TAPEDECK v1.0</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0a0800;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+#crt {
+  position: relative;
+  background: #0c0a02;
+  border: 1px solid #333333;
+  border-radius: 0;
+  padding: 28px 36px;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+}
+
+#crt::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.06) 2px,
+    rgba(0, 0, 0, 0.06) 4px
+  );
+  pointer-events: none;
+  border-radius: 0;
+  z-index: 10;
+}
+
+#display {
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  white-space: pre;
+  user-select: none;
+}
+
+#control-panel {
+  padding: 10px 16px;
+  position: relative;
+  z-index: 20;
+  align-self: stretch;
+  overflow: hidden;
+}
+
+.panel-border {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+  margin: 0;
+  padding: 0;
+}
+
+.panel-border-left { left: 0; }
+.panel-border-right { right: 0; }
+
+.frame-line {
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  white-space: pre;
+  user-select: none;
+}
+
+#control-panel .panel-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+}
+
+#control-panel .panel-row + .panel-row {
+  margin-top: 8px;
+}
+
+#controls {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+#transport {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.btn {
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  background: transparent;
+  color: #FFFFFF;
+  border: 1px solid #555555;
+  padding: 6px 12px;
+  cursor: pointer;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  transition: background 0.15s, border-color 0.15s;
+  letter-spacing: 1px;
+}
+
+.btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #FFFFFF;
+}
+
+.btn.rec-active {
+  color: #FF3000;
+  border-color: #FF3000;
+  text-shadow: 0 0 12px rgba(255, 48, 0, 0.5);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.btn.play-active {
+  color: #00FF60;
+  border-color: #00FF60;
+  text-shadow: 0 0 12px rgba(0, 255, 96, 0.5);
+}
+
+.btn.loop-active {
+  color: #00BFFF;
+  border-color: #00BFFF;
+  text-shadow: 0 0 12px rgba(0, 191, 255, 0.5);
+  background: rgba(0, 191, 255, 0.08);
+}
+
+#file-input { display: none; }
+
+.btn:disabled {
+  color: #333333;
+  border-color: #222222;
+  cursor: default;
+  text-shadow: none;
+}
+
+.btn:disabled:hover { background: transparent; }
+
+#input-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+#control-panel label {
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  letter-spacing: 1px;
+}
+
+.crt-select {
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  background: #0c0a02;
+  color: #FFFFFF;
+  border: 1px solid #555555;
+  padding: 5px 6px;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  outline: none;
+}
+
+.crt-select:hover { border-color: #FFFFFF; }
+
+.crt-select:disabled {
+  color: #333333;
+  border-color: #222222;
+  cursor: default;
+  text-shadow: none;
+}
+
+.crt-select option {
+  background: #0c0a02;
+  color: #FFFFFF;
+}
+
+#mic-select { max-width: 280px; }
+
+#format-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+}
+
+@keyframes pulse { 50% { opacity: 0.6; } }
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  93% { opacity: 0.92; }
+  94% { opacity: 1; }
+}
+
+#crt { animation: flicker 8s infinite; }
+
+#control-panel input[type="color"] {
+  width: 32px;
+  height: 24px;
+  border: 1px solid #555555;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+#gain-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 120px;
+  height: 4px;
+  background: #555555;
+  outline: none;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+#gain-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 16px;
+  background: #FFFFFF;
+  cursor: pointer;
+  border: none;
+}
+
+#gain-slider::-moz-range-thumb {
+  width: 10px;
+  height: 16px;
+  background: #FFFFFF;
+  cursor: pointer;
+  border: none;
+}
+
+#gain-slider:disabled, #output-slider:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+#output-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 120px;
+  height: 4px;
+  background: #555555;
+  outline: none;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+#output-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 16px;
+  background: #FFFFFF;
+  cursor: pointer;
+  border: none;
+}
+
+#output-slider::-moz-range-thumb {
+  width: 10px;
+  height: 16px;
+  background: #FFFFFF;
+  cursor: pointer;
+  border: none;
+}
+</style>
+</head>
+<body>
+<div id="crt">
+  <pre id="display"></pre>
+  <pre id="frame-mid" class="frame-line"></pre>
+  <div id="control-panel">
+    <pre id="border-left" class="frame-line panel-border panel-border-left"></pre>
+    <pre id="border-right" class="frame-line panel-border panel-border-right"></pre>
+    <div id="input-row" class="panel-row">
+      <label>INPUT:</label>
+      <select id="mic-select" class="crt-select" onchange="switchDevice()">
+        <option value="">── NO DEVICES ──</option>
+      </select>
+      <button class="btn" onclick="requestAccess()" style="padding:4px 8px;font-size:11px;">⟳ DETECT</button>
+    </div>
+
+    <div id="gain-row" class="panel-row">
+      <label>IN:</label>
+      <input type="range" id="gain-slider" min="-12" max="24" step="1" value="0" oninput="changeGain()" ondblclick="resetGain()">
+      <label id="gain-readout" style="min-width:42px;text-align:right;cursor:pointer;" ondblclick="resetGain()">0 dB</label>
+      <label>OUT:</label>
+      <input type="range" id="output-slider" min="-60" max="6" step="1" value="0" oninput="changeOutputGain()" ondblclick="resetOutputGain()">
+      <label id="output-readout" style="min-width:42px;text-align:right;cursor:pointer;" ondblclick="resetOutputGain()">0 dB</label>
+    </div>
+
+    <div id="format-row" class="panel-row">
+      <label>RATE:</label>
+      <select id="rate-select" class="crt-select" onchange="changeFormat()">
+        <option value="44100">44.1k</option>
+        <option value="48000">48k</option>
+        <option value="96000">96k</option>
+      </select>
+      <label>BITS:</label>
+      <select id="bits-select" class="crt-select" onchange="changeFormat()">
+        <option value="16">16</option>
+        <option value="24">24</option>
+        <option value="32">32</option>
+      </select>
+      <label>SPEED:</label>
+      <select id="speed-select" class="crt-select" onchange="changeSpeed()">
+        <option value="0.25">¼×</option>
+        <option value="0.5">½×</option>
+        <option value="0.75">¾×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.5">1½×</option>
+        <option value="2">2×</option>
+        <option value="3">3×</option>
+        <option value="4">4×</option>
+      </select>
+    </div>
+
+    <div id="transport" class="panel-row">
+      <button class="btn" id="btn-rew" onmousedown="startScrub('rew')" onmouseup="stopScrub()" onmouseleave="stopScrub()" ontouchstart="startScrub('rew')" ontouchend="stopScrub()" disabled>◄◄ REW</button>
+      <button class="btn" id="btn-play" onclick="playBack()" disabled>► PLAY</button>
+      <button class="btn" id="btn-ff" onmousedown="startScrub('ff')" onmouseup="stopScrub()" onmouseleave="stopScrub()" ontouchstart="startScrub('ff')" ontouchend="stopScrub()" disabled>►► FF</button>
+      <button class="btn" id="btn-loop" onclick="toggleLoop()">⟳ LOOP</button>
+    </div>
+
+    <div id="controls" class="panel-row">
+      <button class="btn" id="btn-rec" onclick="toggleRecord()">● REC</button>
+      <button class="btn" id="btn-stop" onclick="stopAll()" disabled>■ STOP</button>
+      <button class="btn" id="btn-erase" onclick="eraseTape()" disabled>✕ ERASE</button>
+    </div>
+
+    <div id="file-row" class="panel-row">
+      <button class="btn" id="btn-save" onclick="saveWav()" disabled>↓ SAVE</button>
+      <button class="btn" id="btn-load" onclick="document.getElementById('file-input').click()">⤒ LOAD</button>
+      <input type="file" id="file-input" accept="audio/*" onchange="loadAudioFile(event)">
+    </div>
+
+    <div id="color-row" class="panel-row">
+      <label>BG:</label>
+      <input type="color" id="color-bg" value="#0c0a02" onchange="applyColors()">
+      <label>TEXT:</label>
+      <input type="color" id="color-text" value="#FFFFFF" onchange="applyColors()">
+    </div>
+  </div>
+  <pre id="frame-bot" class="frame-line"></pre>
+</div>
+<script>
+
+const W = 50;
+const VU_W = 40;
+let sampleRate = 44100;
+let bitDepth = 16;
+const BUFFER_SIZE = 4096;
+
+// States: idle | recording | stopped | playing
+let state = 'idle';
+let audioCtx = null;
+let stream = null;
+let sourceNode = null;
+let inputGainNode = null;
+let processorNode = null;
+let silentGain = null;
+let outputGainNode = null;
+let chunks = [];
+let recordStart = 0;
+let elapsed = 0;
+let reelFrame = 0;
+let tick = 0;
+let vuL = 0;
+let vuR = 0;
+let rawVuL = 0;
+let rawVuR = 0;
+let errorMsg = '';
+let selectedDeviceId = '';
+let devices = [];
+
+// Playback state
+let playbackSource = null;
+let playbackSplitter = null;
+let playbackAnalyserL = null;
+let playbackAnalyserR = null;
+let playbackStartTime = 0;
+let playbackOffset = 0;     // seconds into the tape
+let playbackDuration = 0;   // total tape length in seconds
+let loopEnabled = false;
+let loadedFileName = '';
+let playSpeed = 1.0;
+let recordSpeed = 1.0;  // speed the tape was recorded at
+let eraseArmed = false;
+let eraseTimeout = null;
+let punchInActive = false;
+let punchTail = null;         // saved audio after punch-in point
+let punchInSampleStart = 0;   // total sample count at punch-in
+
+const REELS = [
+  ['╭───────╮','│   │   │','│───●───│','│   │   │','╰───────╯'],
+  ['╭───────╮','│ ╲   ╱ │','│   ●   │','│ ╱   ╲ │','╰───────╯'],
+  ['╭───────╮','│   │   │','│───●───│','│   │   │','╰───────╯'],
+  ['╭───────╮','│ ╱   ╲ │','│   ●   │','│ ╲   ╱ │','╰───────╯'],
+];
+
+function pad(s) {
+  return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║';
+}
+
+function center(s) {
+  const l = Math.floor((W - s.length) / 2);
+  return '║' + ' '.repeat(l) + s + ' '.repeat(W - s.length - l) + '║';
+}
+
+function hBar(ch) { return '╠' + ch.repeat(W) + '╣'; }
+
+function vuBar(level) {
+  const n = Math.round(level * VU_W);
+  let bar = '';
+  for (let i = 0; i < VU_W; i++) {
+    if (i < n) {
+      bar += (i >= VU_W * 0.85) ? '▓' : '█';
+    } else {
+      bar += '░';
+    }
+  }
+  return bar;
+}
+
+function fmtTime(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const ss = s % 60;
+  const cs = Math.floor((ms % 1000) / 10);
+  return `${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;
+}
+
+function fmtSize(nSamples) {
+  const bytesPer = bitDepth / 8;
+  const headerSize = (bitDepth === 32) ? 58 : 44;
+  const bytes = nSamples * bytesPer + headerSize;
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function render() {
+  tick++;
+
+  // Reel animation: spin during recording, playback, and scrubbing
+  const reelInterval = (state === 'playing' || scrubbing) ? Math.max(2, Math.round(7 / (scrubbing ? getScrubSpeed() : playSpeed))) : 7;
+  if ((state === 'recording' || state === 'playing' || scrubbing) && tick % reelInterval === 0) {
+    reelFrame = (reelFrame + 1) % 4;
+  }
+
+  // VU smoothing
+  vuL += (rawVuL - vuL) * 0.25;
+  vuR += (rawVuR - vuR) * 0.25;
+
+  // Playback/scrub VU from analyser nodes
+  if ((state === 'playing' || scrubbing) && playbackAnalyserL && playbackAnalyserR) {
+    const bufLen = playbackAnalyserL.fftSize;
+    const dataL = new Float32Array(bufLen);
+    const dataR = new Float32Array(bufLen);
+    playbackAnalyserL.getFloatTimeDomainData(dataL);
+    playbackAnalyserR.getFloatTimeDomainData(dataR);
+    let sumL = 0, sumR = 0;
+    for (let i = 0; i < bufLen; i++) {
+      sumL += dataL[i] * dataL[i];
+      sumR += dataR[i] * dataR[i];
+    }
+    rawVuL = Math.min(1, Math.sqrt(sumL / bufLen) * 4);
+    rawVuR = Math.min(1, Math.sqrt(sumR / bufLen) * 4);
+  }
+
+  // Auto-stop when playback reaches the end
+  const effectiveSpeed = playSpeed / recordSpeed;
+  if (state === 'playing') {
+    const pos = playbackOffset + (Date.now() - playbackStartTime) / 1000 * effectiveSpeed;
+    if (pos >= playbackDuration) {
+      finishPlayback();
+    }
+  }
+
+  // Auto-stop scrub at boundaries
+  if (scrubbing) {
+    const scrubElapsed = (Date.now() - scrubStartTime) / 1000;
+    const scrubPos = scrubbing === 'ff'
+      ? scrubStartOffset + scrubElapsed * getScrubSpeed()
+      : scrubStartOffset - scrubElapsed * getScrubSpeed();
+    if (scrubPos <= 0 || scrubPos >= playbackDuration) stopScrub();
+  }
+
+  // Time display
+  let t;
+  if (state === 'recording') {
+    t = fmtTime(elapsed + Date.now() - recordStart);
+  } else if (scrubbing) {
+    const scrubElapsed = (Date.now() - scrubStartTime) / 1000;
+    const scrubPos = scrubbing === 'ff'
+      ? Math.min(scrubStartOffset + scrubElapsed * getScrubSpeed(), playbackDuration)
+      : Math.max(scrubStartOffset - scrubElapsed * getScrubSpeed(), 0);
+    t = fmtTime(scrubPos * 1000);
+  } else if (state === 'playing') {
+    const pos = playbackOffset + (Date.now() - playbackStartTime) / 1000 * effectiveSpeed;
+    t = fmtTime(Math.min(pos, playbackDuration) * 1000);
+  } else if (state === 'stopped') {
+    t = fmtTime(elapsed);
+  } else {
+    t = fmtTime(0);
+  }
+
+  const reel = (state === 'recording' || state === 'playing' || scrubbing) ? REELS[reelFrame] : REELS[0];
+  const tapeC = (state === 'recording') ? (tick % 2 === 0 ? '═' : '─')
+              : (state === 'playing' || scrubbing) ? (tick % 2 === 0 ? '─' : '═')
+              : '═';
+  const gap = 22;
+
+  let statusTxt, statusLine2;
+  const totalSamples = chunks.reduce((s, c) => s + c.length, 0);
+
+  const rateK = sampleRate >= 1000 ? (sampleRate / 1000) + 'k' : sampleRate;
+  const fmtStr = `${rateK}/${bitDepth}bit STEREO WAV`;
+
+  if (scrubbing) {
+    statusTxt = scrubbing === 'rew' ? '◄◄ REW' : '►► FF';
+    statusLine2 = `SIZE: ${fmtSize(totalSamples)}  ${rateK}`;
+  } else {
+    switch (state) {
+      case 'idle':
+        statusTxt = 'READY.';
+        statusLine2 = fmtStr;
+        break;
+      case 'recording':
+        statusTxt = punchInActive ? '● PUNCH IN' : '● REC';
+        statusLine2 = fmtStr;
+        break;
+      case 'stopped':
+        statusTxt = '■ STOPPED';
+        statusLine2 = `SIZE: ${fmtSize(totalSamples)}  ${rateK}`;
+        break;
+      case 'playing':
+        statusTxt = '► PLAYING';
+        statusLine2 = `SIZE: ${fmtSize(totalSamples)}  ${rateK}`;
+        break;
+    }
+  }
+
+  const lines = [];
+  lines.push('╔' + '═'.repeat(W) + '╗');
+  lines.push(pad(''));
+  lines.push(center('B B  T A P E D E C K  v1.0'));
+  lines.push(pad(''));
+  lines.push(hBar('═'));
+  lines.push(pad(''));
+
+  for (let i = 0; i < 5; i++) {
+    const mid = i === 2 ? tapeC.repeat(gap) : ' '.repeat(gap);
+    lines.push(pad('     ' + reel[i] + mid + reel[i]));
+  }
+
+  lines.push(pad(''));
+  lines.push(pad('  L │' + vuBar(vuL) + '│'));
+  lines.push(pad('  R │' + vuBar(vuR) + '│'));
+  lines.push(pad(''));
+  const devName = getDeviceName();
+  const truncDev = devName.length > 36 ? devName.slice(0, 33) + '...' : devName;
+
+  lines.push(hBar('─'));
+  lines.push(pad(''));
+  lines.push(pad('  INPUT:  ' + truncDev));
+  const speedTag = playSpeed !== 1 ? `[${playSpeed}×]` : '';
+  const recSpeedTag = recordSpeed !== 1 ? `[REC@${recordSpeed}×]` : '';
+  const loopTag = loopEnabled ? '[LOOP]' : '';
+  const tags = [speedTag, recSpeedTag, loopTag].filter(Boolean).join(' ');
+  const tagsStr = tags ? '  ' + tags : '';
+  lines.push(pad('  STATUS: ' + statusTxt.padEnd(14) + 'TIME: ' + t));
+  if (loadedFileName) {
+    const truncFile = loadedFileName.length > 36 ? loadedFileName.slice(0, 33) + '...' : loadedFileName;
+    lines.push(pad('  FILE:   ' + truncFile + tagsStr));
+  } else {
+    lines.push(pad('  ' + statusLine2 + tagsStr));
+  }
+
+  if (errorMsg) {
+    lines.push(pad(''));
+    lines.push(pad('  ' + errorMsg));
+  }
+
+  lines.push(pad(''));
+
+  document.getElementById('display').textContent = lines.join('\n');
+  document.getElementById('frame-mid').textContent = '╠' + '═'.repeat(W) + '╣';
+  document.getElementById('frame-bot').textContent = '╚' + '═'.repeat(W) + '╝';
+
+  // Fill side borders with ║ characters matching the panel height
+  const panel = document.getElementById('control-panel');
+  const lineH = 21.75; // 15px * 1.45 line-height
+  const numLines = Math.ceil(panel.clientHeight / lineH) + 1;
+  const borderCol = new Array(numLines).fill('║').join('\n');
+  document.getElementById('border-left').textContent = borderCol;
+  document.getElementById('border-right').textContent = borderCol;
+
+  requestAnimationFrame(render);
+}
+
+function updateButtons() {
+  const btnRew   = document.getElementById('btn-rew');
+  const btnPlay  = document.getElementById('btn-play');
+  const btnFf    = document.getElementById('btn-ff');
+  const btnRec   = document.getElementById('btn-rec');
+  const btnStop  = document.getElementById('btn-stop');
+  const btnErase = document.getElementById('btn-erase');
+  const btnSave  = document.getElementById('btn-save');
+  const btnLoad  = document.getElementById('btn-load');
+  const micSel   = document.getElementById('mic-select');
+  const rateSel  = document.getElementById('rate-select');
+  const bitsSel  = document.getElementById('bits-select');
+  const speedSel = document.getElementById('speed-select');
+
+  btnRec.classList.remove('rec-active');
+  btnPlay.classList.remove('play-active');
+
+  const hasAudio = chunks.length > 0;
+
+  switch (state) {
+    case 'idle':
+      btnRew.disabled   = true;
+      btnPlay.disabled  = true;
+      btnFf.disabled    = true;
+      btnRec.disabled   = false;
+      btnStop.disabled  = true;
+      btnErase.disabled = true;
+      btnSave.disabled  = true;
+      btnLoad.disabled  = false;
+      micSel.disabled   = false;
+      rateSel.disabled  = false;
+      bitsSel.disabled  = false;
+      speedSel.disabled = false;
+      break;
+
+    case 'recording':
+      btnRew.disabled   = true;
+      btnPlay.disabled  = false;
+      btnFf.disabled    = true;
+      btnRec.disabled   = false;
+      btnStop.disabled  = false;
+      btnErase.disabled = true;
+      btnSave.disabled  = true;
+      btnLoad.disabled  = true;
+      micSel.disabled   = true;
+      rateSel.disabled  = true;
+      bitsSel.disabled  = true;
+      speedSel.disabled = true;
+      btnRec.classList.add('rec-active');
+      break;
+
+    case 'stopped':
+      btnRew.disabled   = !hasAudio;
+      btnPlay.disabled  = !hasAudio;
+      btnFf.disabled    = !hasAudio;
+      btnRec.disabled   = false;
+      btnStop.disabled  = true;
+      btnErase.disabled = !hasAudio;
+      btnSave.disabled  = !hasAudio;
+      btnLoad.disabled  = false;
+      micSel.disabled   = false;
+      rateSel.disabled  = false;
+      bitsSel.disabled  = false;
+      speedSel.disabled = false;
+      break;
+
+    case 'playing':
+      btnRew.disabled   = false;
+      btnPlay.disabled  = true;
+      btnFf.disabled    = false;
+      btnRec.disabled   = true;
+      btnStop.disabled  = false;
+      btnErase.disabled = true;
+      btnSave.disabled  = true;
+      btnLoad.disabled  = true;
+      micSel.disabled   = true;
+      rateSel.disabled  = true;
+      bitsSel.disabled  = true;
+      speedSel.disabled = false;
+      btnPlay.classList.add('play-active');
+      break;
+  }
+}
+
+async function populateDevices() {
+  const all = await navigator.mediaDevices.enumerateDevices();
+  devices = all.filter(d => d.kind === 'audioinput');
+  const sel = document.getElementById('mic-select');
+  sel.innerHTML = '';
+  devices.forEach((d, i) => {
+    const opt = document.createElement('option');
+    opt.value = d.deviceId;
+    opt.textContent = d.label || `INPUT ${i + 1}`;
+    sel.appendChild(opt);
+  });
+  if (selectedDeviceId) {
+    sel.value = selectedDeviceId;
+  } else if (devices.length > 0) {
+    selectedDeviceId = devices[0].deviceId;
+    sel.value = selectedDeviceId;
+  }
+}
+
+function getDeviceName() {
+  if (!selectedDeviceId || devices.length === 0) return 'NONE';
+  const d = devices.find(d => d.deviceId === selectedDeviceId);
+  return d ? (d.label || 'UNKNOWN') : 'NONE';
+}
+
+function onAudioProcess(e) {
+  const left = e.inputBuffer.getChannelData(0);
+  const right = e.inputBuffer.numberOfChannels > 1
+    ? e.inputBuffer.getChannelData(1) : left;
+  let sumL = 0, sumR = 0;
+  for (let i = 0; i < left.length; i++) {
+    sumL += left[i] * left[i];
+    sumR += right[i] * right[i];
+  }
+  rawVuL = Math.min(1, Math.sqrt(sumL / left.length) * 4);
+  rawVuR = Math.min(1, Math.sqrt(sumR / right.length) * 4);
+  if (state === 'recording') {
+    const interleaved = new Float32Array(left.length * 2);
+    for (let i = 0; i < left.length; i++) {
+      interleaved[i * 2] = left[i];
+      interleaved[i * 2 + 1] = right[i];
+    }
+    chunks.push(interleaved);
+  }
+}
+
+async function requestAccess() {
+  try {
+    // Full init — mic is hot and ready for instant recording
+    const ok = await initAudio();
+    if (!ok) return;
+    await populateDevices();
+    navigator.mediaDevices.addEventListener('devicechange', populateDevices);
+    errorMsg = '';
+  } catch (e) {
+    errorMsg = '?ERR: MIC ACCESS DENIED';
+  }
+}
+
+async function switchDevice() {
+  selectedDeviceId = document.getElementById('mic-select').value;
+  if (!audioCtx) {
+    // Pre-init audio so mic is hot when user hits REC
+    await initAudio();
+    return;
+  }
+  if (sourceNode) { sourceNode.disconnect(); sourceNode = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: { exact: selectedDeviceId },
+        sampleRate: sampleRate,
+        channelCount: 2,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      }
+    });
+    sourceNode = audioCtx.createMediaStreamSource(stream);
+    if (inputGainNode) sourceNode.connect(inputGainNode);
+    else if (processorNode) sourceNode.connect(processorNode);
+    errorMsg = '';
+  } catch (e) {
+    errorMsg = '?ERR: DEVICE UNAVAILABLE';
+  }
+}
+
+async function initAudio() {
+  if (audioCtx) return true;
+  try {
+    const audioConstraints = {
+      sampleRate: sampleRate,
+      channelCount: 2,
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false
+    };
+    if (selectedDeviceId) {
+      audioConstraints.deviceId = { exact: selectedDeviceId };
+    }
+    stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+    audioCtx = new AudioContext({ sampleRate: sampleRate });
+    sourceNode = audioCtx.createMediaStreamSource(stream);
+
+    const gainDb = parseFloat(document.getElementById('gain-slider').value);
+    inputGainNode = audioCtx.createGain();
+    inputGainNode.gain.value = Math.pow(10, gainDb / 20);
+
+    processorNode = audioCtx.createScriptProcessor(BUFFER_SIZE, 2, 2);
+    processorNode.onaudioprocess = onAudioProcess;
+    silentGain = audioCtx.createGain();
+    silentGain.gain.value = 0;
+    sourceNode.connect(inputGainNode);
+    inputGainNode.connect(processorNode);
+    processorNode.connect(silentGain);
+    silentGain.connect(audioCtx.destination);
+
+    if (devices.length === 0) {
+      await populateDevices();
+      navigator.mediaDevices.addEventListener('devicechange', populateDevices);
+    }
+    if (!selectedDeviceId && stream.getAudioTracks().length > 0) {
+      const settings = stream.getAudioTracks()[0].getSettings();
+      if (settings.deviceId) {
+        selectedDeviceId = settings.deviceId;
+        document.getElementById('mic-select').value = selectedDeviceId;
+      }
+    }
+    errorMsg = '';
+    return true;
+  } catch (e) {
+    errorMsg = '?ERR: MIC ACCESS DENIED';
+    return false;
+  }
+}
+
+// ── RECORD ──────────────────────────────────────────────
+
+async function toggleRecord() {
+  if (state === 'recording') return;
+  const ok = await initAudio();
+  if (!ok) return;
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+  // From idle: start fresh
+  if (state === 'idle') {
+    chunks = [];
+    elapsed = 0;
+    playbackOffset = 0;
+    playbackDuration = 0;
+    loadedFileName = '';
+    recordSpeed = playSpeed;  // lock in the tape speed for this recording
+  }
+  // From stopped: check for punch-in vs. append
+  if (state === 'stopped' && chunks.length > 0) {
+    calcPlaybackDuration();
+    if (playbackOffset < playbackDuration - 0.01) {
+      // Punch-in: truncate tape at current position, save the tail
+      const merged = getMergedBuffer();
+      const punchSample = Math.floor(playbackOffset * sampleRate) * 2; // interleaved index
+      const before = merged.slice(0, punchSample);
+      punchTail = merged.slice(punchSample);
+      punchInSampleStart = before.length;
+      punchInActive = true;
+      chunks = before.length > 0 ? [before] : [];
+      elapsed = playbackOffset * 1000;
+    }
+    // else: at the end of tape, just append (no punch-in needed)
+  }
+
+  state = 'recording';
+  recordStart = Date.now();
+  errorMsg = '';
+  updateButtons();
+}
+
+function stopAll() {
+  if (scrubbing) {
+    stopScrub();
+    return;
+  }
+  if (state === 'recording') {
+    elapsed += Date.now() - recordStart;
+
+    // Punch-out: splice saved tail back
+    if (punchInActive && punchTail) {
+      const totalNow = chunks.reduce((s, c) => s + c.length, 0);
+      const newRecordedSamples = totalNow - punchInSampleStart;
+      if (newRecordedSamples < punchTail.length) {
+        // Restore the portion of the tail that wasn't overwritten
+        const tailRemainder = punchTail.slice(newRecordedSamples);
+        chunks.push(tailRemainder);
+      }
+      punchTail = null;
+      punchInActive = false;
+    }
+
+    state = 'stopped';
+    rawVuL = 0;
+    rawVuR = 0;
+    calcPlaybackDuration();
+    elapsed = playbackDuration * 1000; // update elapsed to full tape length
+    playbackOffset = 0;
+  } else if (state === 'playing') {
+    killPlaybackSource();
+    const playedFor = (Date.now() - playbackStartTime) / 1000 * (playSpeed / recordSpeed);
+    playbackOffset = Math.min(playbackOffset + playedFor, playbackDuration);
+    state = 'stopped';
+    rawVuL = 0;
+    rawVuR = 0;
+  }
+  errorMsg = '';
+  updateButtons();
+}
+
+// ── PLAYBACK ────────────────────────────────────────────
+
+function calcPlaybackDuration() {
+  const totalSamples = chunks.reduce((s, c) => s + c.length, 0);
+  // interleaved stereo: 2 samples per frame
+  playbackDuration = (totalSamples / 2) / sampleRate;
+}
+
+function getMergedBuffer() {
+  const totalLen = chunks.reduce((s, c) => s + c.length, 0);
+  const merged = new Float32Array(totalLen);
+  let off = 0;
+  for (const c of chunks) { merged.set(c, off); off += c.length; }
+  return merged;
+}
+
+function getAudioBuffer() {
+  const merged = getMergedBuffer();
+  const numFrames = merged.length / 2;
+  const audioBuf = audioCtx.createBuffer(2, numFrames, sampleRate);
+  const chL = audioBuf.getChannelData(0);
+  const chR = audioBuf.getChannelData(1);
+  for (let i = 0; i < numFrames; i++) {
+    chL[i] = merged[i * 2];
+    chR[i] = merged[i * 2 + 1];
+  }
+  return audioBuf;
+}
+
+function killPlaybackSource() {
+  if (playbackSource) {
+    try { playbackSource.onended = null; } catch(e) {}
+    try { playbackSource.stop(); } catch(e) {}
+    try { playbackSource.disconnect(); } catch(e) {}
+    playbackSource = null;
+  }
+  if (playbackSplitter) {
+    try { playbackSplitter.disconnect(); } catch(e) {}
+    playbackSplitter = null;
+  }
+  playbackAnalyserL = null;
+  playbackAnalyserR = null;
+}
+
+async function playBack() {
+  // Allow play from recording state — punch-out first if needed
+  if (state === 'recording') {
+    elapsed += Date.now() - recordStart;
+
+    // Punch-out: splice tail back
+    if (punchInActive && punchTail) {
+      const totalNow = chunks.reduce((s, c) => s + c.length, 0);
+      const newRecordedSamples = totalNow - punchInSampleStart;
+      if (newRecordedSamples < punchTail.length) {
+        chunks.push(punchTail.slice(newRecordedSamples));
+      }
+      punchTail = null;
+      punchInActive = false;
+    }
+
+    state = 'stopped';
+    rawVuL = 0;
+    rawVuR = 0;
+  }
+  if (state !== 'stopped') return;
+  if (chunks.length === 0) return;
+
+  // Ensure audio context
+  if (!audioCtx) {
+    audioCtx = new AudioContext({ sampleRate: sampleRate });
+  }
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+  calcPlaybackDuration();
+  if (playbackOffset >= playbackDuration) playbackOffset = 0;
+
+  const audioBuf = getAudioBuffer();
+
+  playbackSource = audioCtx.createBufferSource();
+  playbackSource.buffer = audioBuf;
+  playbackSource.playbackRate.value = playSpeed / recordSpeed;
+
+  // Splitter + analysers for L/R VU metering
+  playbackSplitter = audioCtx.createChannelSplitter(2);
+  playbackAnalyserL = audioCtx.createAnalyser();
+  playbackAnalyserR = audioCtx.createAnalyser();
+  playbackAnalyserL.fftSize = 2048;
+  playbackAnalyserR.fftSize = 2048;
+
+  ensureOutputGain();
+  playbackSource.connect(playbackSplitter);
+  playbackSplitter.connect(playbackAnalyserL, 0);
+  playbackSplitter.connect(playbackAnalyserR, 1);
+  playbackSource.connect(outputGainNode || audioCtx.destination);
+
+  playbackSource.onended = () => {
+    if (state === 'playing') finishPlayback();
+  };
+
+  playbackStartTime = Date.now();
+  playbackSource.start(0, playbackOffset);
+  state = 'playing';
+  errorMsg = '';
+  updateButtons();
+}
+
+function finishPlayback() {
+  killPlaybackSource();
+  if (loopEnabled && chunks.length > 0) {
+    // Loop: restart from the beginning
+    playbackOffset = 0;
+    rawVuL = 0;
+    rawVuR = 0;
+    state = 'stopped';
+    playBack(); // re-trigger playback from top
+    return;
+  }
+  playbackOffset = playbackDuration;
+  rawVuL = 0;
+  rawVuR = 0;
+  state = 'stopped';
+  updateButtons();
+}
+
+// ── SCRUB (REW / FF) ───────────────────────────────
+
+let scrubbing = null;     // null, 'rew', or 'ff'
+let scrubSource = null;
+let scrubStartTime = 0;
+let scrubStartOffset = 0;
+let preScrubState = null; // state before scrub started
+function getScrubSpeed() { return playSpeed * 2; }
+
+function startScrub(direction) {
+  if (chunks.length === 0) return;
+  if (scrubbing) return;
+
+  // Remember state before scrub
+  preScrubState = state;
+
+  // Stop current playback if playing
+  if (state === 'playing') {
+    killPlaybackSource();
+    const playedFor = (Date.now() - playbackStartTime) / 1000 * (playSpeed / recordSpeed);
+    playbackOffset = Math.min(playbackOffset + playedFor, playbackDuration);
+    state = 'stopped';
+  }
+  if (state !== 'stopped') return;
+
+  // Ensure audio context
+  if (!audioCtx) {
+    audioCtx = new AudioContext({ sampleRate: sampleRate });
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  calcPlaybackDuration();
+
+  // Check boundaries
+  if (direction === 'rew' && playbackOffset <= 0) return;
+  if (direction === 'ff' && playbackOffset >= playbackDuration) return;
+
+  scrubbing = direction;
+  scrubStartTime = Date.now();
+  scrubStartOffset = playbackOffset;
+
+  // Build audio source
+  let audioBuf;
+  let startOffset;
+
+  if (direction === 'ff') {
+    audioBuf = getAudioBuffer();
+    startOffset = playbackOffset;
+  } else {
+    audioBuf = getReversedAudioBuffer();
+    startOffset = playbackDuration - playbackOffset;
+  }
+
+  scrubSource = audioCtx.createBufferSource();
+  scrubSource.buffer = audioBuf;
+  scrubSource.playbackRate.value = getScrubSpeed();
+
+  // Connect to analysers + output
+  playbackSplitter = audioCtx.createChannelSplitter(2);
+  playbackAnalyserL = audioCtx.createAnalyser();
+  playbackAnalyserR = audioCtx.createAnalyser();
+  playbackAnalyserL.fftSize = 2048;
+  playbackAnalyserR.fftSize = 2048;
+  ensureOutputGain();
+  scrubSource.connect(playbackSplitter);
+  playbackSplitter.connect(playbackAnalyserL, 0);
+  playbackSplitter.connect(playbackAnalyserR, 1);
+  scrubSource.connect(outputGainNode || audioCtx.destination);
+
+  scrubSource.onended = () => { if (scrubbing) stopScrub(); };
+  scrubSource.start(0, startOffset);
+  errorMsg = '';
+  updateButtons();
+}
+
+function stopScrub() {
+  if (!scrubbing) return;
+
+  const elapsed = (Date.now() - scrubStartTime) / 1000;
+
+  if (scrubbing === 'ff') {
+    playbackOffset = Math.min(scrubStartOffset + elapsed * getScrubSpeed(), playbackDuration);
+  } else {
+    playbackOffset = Math.max(scrubStartOffset - elapsed * getScrubSpeed(), 0);
+  }
+
+  // Kill scrub source
+  if (scrubSource) {
+    try { scrubSource.onended = null; } catch(e) {}
+    try { scrubSource.stop(); } catch(e) {}
+    try { scrubSource.disconnect(); } catch(e) {}
+    scrubSource = null;
+  }
+  if (playbackSplitter) {
+    try { playbackSplitter.disconnect(); } catch(e) {}
+    playbackSplitter = null;
+  }
+  playbackAnalyserL = null;
+  playbackAnalyserR = null;
+
+  const wasPlaying = preScrubState === 'playing';
+  scrubbing = null;
+  preScrubState = null;
+  rawVuL = 0;
+  rawVuR = 0;
+  updateButtons();
+
+  // Restore play state if tape was playing before scrub
+  if (wasPlaying) playBack();
+}
+
+function getReversedAudioBuffer() {
+  const merged = getMergedBuffer();
+  const numFrames = merged.length / 2;
+  const audioBuf = audioCtx.createBuffer(2, numFrames, sampleRate);
+  const chL = audioBuf.getChannelData(0);
+  const chR = audioBuf.getChannelData(1);
+  for (let i = 0; i < numFrames; i++) {
+    chL[i] = merged[(numFrames - 1 - i) * 2];
+    chR[i] = merged[(numFrames - 1 - i) * 2 + 1];
+  }
+  return audioBuf;
+}
+
+// ── LOOP ────────────────────────────────────────────────
+
+function toggleLoop() {
+  loopEnabled = !loopEnabled;
+  document.getElementById('btn-loop').classList.toggle('loop-active', loopEnabled);
+}
+
+// ── FORMAT ──────────────────────────────────────────────
+
+function changeFormat() {
+  const newRate = parseInt(document.getElementById('rate-select').value);
+  const newBits = parseInt(document.getElementById('bits-select').value);
+
+  // Bit depth only affects WAV encoding, safe to change anytime
+  bitDepth = newBits;
+
+  // If sample rate changed, check for existing audio
+  if (newRate !== sampleRate) {
+    if (chunks.length > 0) {
+      errorMsg = '?ERR: ERASE TAPE FIRST';
+      // Reset the dropdown to current rate
+      document.getElementById('rate-select').value = sampleRate;
+      return;
+    }
+    // Tear down existing audio context for new rate
+    if (audioCtx) {
+      if (sourceNode) { sourceNode.disconnect(); sourceNode = null; }
+      if (inputGainNode) { inputGainNode.disconnect(); inputGainNode = null; }
+      if (processorNode) { processorNode.disconnect(); processorNode = null; }
+      if (silentGain) { silentGain.disconnect(); silentGain = null; }
+      if (outputGainNode) { outputGainNode.disconnect(); outputGainNode = null; }
+      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+      audioCtx.close();
+      audioCtx = null;
+    }
+    sampleRate = newRate;
+  }
+}
+
+// ── SPEED ───────────────────────────────────────────────
+
+function changeSpeed() {
+  const newSpeed = parseFloat(document.getElementById('speed-select').value);
+
+  // If currently playing, update live — recalc tape position first
+  if (state === 'playing' && playbackSource) {
+    const playedFor = (Date.now() - playbackStartTime) / 1000 * (playSpeed / recordSpeed);
+    playbackOffset = Math.min(playbackOffset + playedFor, playbackDuration);
+    playbackStartTime = Date.now();
+    playbackSource.playbackRate.value = newSpeed / recordSpeed;
+  }
+
+  playSpeed = newSpeed;
+}
+
+// ── OUTPUT GAIN ────────────────────────────────────────
+
+function ensureOutputGain() {
+  if (outputGainNode || !audioCtx) return;
+  const db = parseFloat(document.getElementById('output-slider').value);
+  outputGainNode = audioCtx.createGain();
+  outputGainNode.gain.value = db <= -60 ? 0 : Math.pow(10, db / 20);
+  outputGainNode.connect(audioCtx.destination);
+}
+
+function changeOutputGain() {
+  const db = parseFloat(document.getElementById('output-slider').value);
+  const label = db <= -60 ? '-∞' : (db > 0 ? '+' : '') + db;
+  document.getElementById('output-readout').textContent = label + ' dB';
+  if (outputGainNode) {
+    outputGainNode.gain.value = db <= -60 ? 0 : Math.pow(10, db / 20);
+  }
+}
+
+// ── GAIN ───────────────────────────────────────────────
+
+function changeGain() {
+  const db = parseFloat(document.getElementById('gain-slider').value);
+  document.getElementById('gain-readout').textContent =
+    (db > 0 ? '+' : '') + db + ' dB';
+  if (inputGainNode) {
+    inputGainNode.gain.value = Math.pow(10, db / 20);
+  }
+}
+
+function resetGain() {
+  document.getElementById('gain-slider').value = 0;
+  changeGain();
+}
+
+function resetOutputGain() {
+  document.getElementById('output-slider').value = 0;
+  changeOutputGain();
+}
+
+// ── LOAD ────────────────────────────────────────────────
+
+async function loadAudioFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  // Only allow loading when idle or stopped
+  if (state !== 'idle' && state !== 'stopped') {
+    errorMsg = '?ERR: STOP FIRST';
+    e.target.value = '';
+    return;
+  }
+
+  errorMsg = 'LOADING...';
+  try {
+    // Ensure we have an audio context for decoding
+    if (!audioCtx) {
+      audioCtx = new AudioContext({ sampleRate: sampleRate });
+    }
+
+    const arrayBuf = await file.arrayBuffer();
+    const decoded = await audioCtx.decodeAudioData(arrayBuf);
+
+    // Resample to our sampleRate if needed, then interleave to stereo
+    const numFrames = decoded.length;
+    const chL = decoded.getChannelData(0);
+    const chR = decoded.numberOfChannels > 1 ? decoded.getChannelData(1) : chL;
+
+    // If sample rates differ, we need to resample
+    let finalL, finalR, finalFrames;
+    if (decoded.sampleRate !== sampleRate) {
+      // Use OfflineAudioContext to resample
+      const ratio = sampleRate / decoded.sampleRate;
+      finalFrames = Math.round(numFrames * ratio);
+      const offline = new OfflineAudioContext(2, finalFrames, sampleRate);
+      const bufSrc = offline.createBufferSource();
+      bufSrc.buffer = decoded;
+      bufSrc.connect(offline.destination);
+      bufSrc.start(0);
+      const resampled = await offline.startRendering();
+      finalL = resampled.getChannelData(0);
+      finalR = resampled.numberOfChannels > 1 ? resampled.getChannelData(1) : finalL;
+      finalFrames = resampled.length;
+    } else {
+      finalL = chL;
+      finalR = chR;
+      finalFrames = numFrames;
+    }
+
+    // Interleave into our chunks format
+    const interleaved = new Float32Array(finalFrames * 2);
+    for (let i = 0; i < finalFrames; i++) {
+      interleaved[i * 2] = finalL[i];
+      interleaved[i * 2 + 1] = finalR[i];
+    }
+
+    chunks = [interleaved];
+    elapsed = (finalFrames / sampleRate) * 1000;
+    calcPlaybackDuration();
+    playbackOffset = 0;
+    recordSpeed = 1.0;  // loaded files are native at 1×
+    loadedFileName = file.name;
+    state = 'stopped';
+    errorMsg = '';
+    updateButtons();
+  } catch (err) {
+    errorMsg = '?ERR: UNSUPPORTED FORMAT';
+  }
+
+  // Reset file input so same file can be re-loaded
+  e.target.value = '';
+}
+
+// ── ERASE ───────────────────────────────────────────────
+
+function eraseTape() {
+  if (state === 'recording' || state === 'playing') return;
+  if (!eraseArmed) {
+    // First click: arm
+    eraseArmed = true;
+    document.getElementById('btn-erase').textContent = '⚠ SURE?';
+    document.getElementById('btn-erase').style.color = '#FF3000';
+    document.getElementById('btn-erase').style.borderColor = '#FF3000';
+    // Auto-disarm after 3 seconds
+    eraseTimeout = setTimeout(() => {
+      eraseArmed = false;
+      document.getElementById('btn-erase').textContent = '✕ ERASE';
+      document.getElementById('btn-erase').style.color = '';
+      document.getElementById('btn-erase').style.borderColor = '';
+    }, 3000);
+    return;
+  }
+  // Second click: erase
+  clearTimeout(eraseTimeout);
+  eraseArmed = false;
+  document.getElementById('btn-erase').textContent = '✕ ERASE';
+  document.getElementById('btn-erase').style.color = '';
+  document.getElementById('btn-erase').style.borderColor = '';
+  chunks = [];
+  elapsed = 0;
+  playbackOffset = 0;
+  playbackDuration = 0;
+  recordSpeed = 1.0;
+  punchInActive = false;
+  punchTail = null;
+  loadedFileName = '';
+  rawVuL = 0;
+  rawVuR = 0;
+  state = 'idle';
+  errorMsg = '';
+  updateButtons();
+}
+
+// ── SAVE ────────────────────────────────────────────────
+
+function saveWav() {
+  if (chunks.length === 0) return;
+
+  const merged = getMergedBuffer();
+  const numCh = 2;
+  const bps = bitDepth;
+  const bytesPer = bps / 8;
+  const blockAlign = numCh * bytesPer;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = merged.length * bytesPer;
+
+  // 32-bit float uses format 3 (IEEE float) and needs an extra 'fact' chunk
+  const isFloat = (bps === 32);
+  const fmtCode = isFloat ? 3 : 1;
+  const headerSize = isFloat ? 58 : 44; // extra fact chunk for float
+
+  const buf = new ArrayBuffer(headerSize + dataSize);
+  const v = new DataView(buf);
+
+  function ws(o, s) { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); }
+
+  ws(0, 'RIFF');
+  v.setUint32(4, headerSize - 8 + dataSize, true);
+  ws(8, 'WAVE');
+  ws(12, 'fmt ');
+  v.setUint32(16, isFloat ? 18 : 16, true);  // fmt chunk size
+  v.setUint16(20, fmtCode, true);
+  v.setUint16(22, numCh, true);
+  v.setUint32(24, sampleRate, true);
+  v.setUint32(28, byteRate, true);
+  v.setUint16(32, blockAlign, true);
+  v.setUint16(34, bps, true);
+
+  let dataOffset;
+  if (isFloat) {
+    v.setUint16(36, 0, true);      // cbSize (extension size)
+    ws(38, 'fact');
+    v.setUint32(42, 4, true);      // fact chunk size
+    v.setUint32(46, merged.length / numCh, true);  // sample count per channel
+    ws(50, 'data');
+    v.setUint32(54, dataSize, true);
+    dataOffset = 58;
+  } else {
+    ws(36, 'data');
+    v.setUint32(40, dataSize, true);
+    dataOffset = 44;
+  }
+
+  let p = dataOffset;
+  for (let i = 0; i < merged.length; i++) {
+    const s = Math.max(-1, Math.min(1, merged[i]));
+    if (bps === 16) {
+      v.setInt16(p, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      p += 2;
+    } else if (bps === 24) {
+      const val = Math.round(s < 0 ? s * 0x800000 : s * 0x7FFFFF);
+      v.setUint8(p,     val & 0xFF);
+      v.setUint8(p + 1, (val >> 8) & 0xFF);
+      v.setUint8(p + 2, (val >> 16) & 0xFF);
+      p += 3;
+    } else {
+      // 32-bit IEEE float — write the raw float
+      v.setFloat32(p, s, true);
+      p += 4;
+    }
+  }
+
+  const blob = new Blob([buf], { type: 'audio/wav' });
+  const now = new Date();
+  const ts = now.getFullYear()
+    + String(now.getMonth() + 1).padStart(2, '0')
+    + String(now.getDate()).padStart(2, '0')
+    + '_' + String(now.getHours()).padStart(2, '0')
+    + String(now.getMinutes()).padStart(2, '0')
+    + String(now.getSeconds()).padStart(2, '0');
+
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `tape_${ts}.wav`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+
+  // Keep audio data — user can ERASE manually if they want to start fresh
+}
+
+// ── COLORS ──────────────────────────────────────────────
+
+function applyColors() {
+  const bg = document.getElementById('color-bg').value;
+  const txt = document.getElementById('color-text').value;
+  document.body.style.background = bg;
+  document.getElementById('crt').style.background = bg;
+  document.getElementById('display').style.color = txt;
+  document.getElementById('display').style.textShadow = `0 0 8px ${txt}55`;
+  document.querySelectorAll('.btn, #control-panel label, .crt-select').forEach(el => {
+    el.style.color = txt;
+    el.style.borderColor = txt + '88';
+    el.style.textShadow = `0 0 8px ${txt}55`;
+  });
+  document.querySelectorAll('.crt-select option').forEach(el => el.style.color = txt);
+  document.getElementById('crt').style.borderColor = txt + '33';
+  const slider = document.getElementById('gain-slider');
+  slider.style.background = txt + '55';
+  const outSlider = document.getElementById('output-slider');
+  outSlider.style.background = txt + '55';
+  document.querySelectorAll('.frame-line').forEach(el => {
+    el.style.color = txt;
+    el.style.textShadow = `0 0 8px ${txt}55`;
+  });
+}
+
+// ── KEYBOARD SHORTCUTS ─────────────────────────────
+
+document.addEventListener('keydown', (e) => {
+  // Ignore if user is focused on a select/input
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+
+  switch (e.key.toLowerCase()) {
+    case 'r':
+      e.preventDefault();
+      if (!document.getElementById('btn-rec').disabled) toggleRecord();
+      break;
+    case ' ':
+      e.preventDefault();
+      if (state === 'playing' || state === 'recording') {
+        stopAll();
+      } else if (state === 'stopped' && chunks.length > 0) {
+        playBack();
+      }
+      break;
+    case 'e':
+      e.preventDefault();
+      if (!document.getElementById('btn-erase').disabled) eraseTape();
+      break;
+    case 's':
+      e.preventDefault();
+      if (!document.getElementById('btn-save').disabled) saveWav();
+      break;
+    case 'l':
+      e.preventDefault();
+      toggleLoop();
+      break;
+    case 'o':
+      e.preventDefault();
+      if (!document.getElementById('btn-load').disabled) {
+        document.getElementById('file-input').click();
+      }
+      break;
+    case 'arrowleft':
+      e.preventDefault();
+      if (!scrubbing && !document.getElementById('btn-rew').disabled) startScrub('rew');
+      break;
+    case 'arrowright':
+      e.preventDefault();
+      if (!scrubbing && !document.getElementById('btn-ff').disabled) startScrub('ff');
+      break;
+    case 'arrowup':
+      e.preventDefault();
+      if (!document.getElementById('speed-select').disabled) {
+        const sel = document.getElementById('speed-select');
+        if (sel.selectedIndex < sel.options.length - 1) {
+          sel.selectedIndex++;
+          changeSpeed();
+        }
+      }
+      break;
+    case 'arrowdown':
+      e.preventDefault();
+      if (!document.getElementById('speed-select').disabled) {
+        const sel = document.getElementById('speed-select');
+        if (sel.selectedIndex > 0) {
+          sel.selectedIndex--;
+          changeSpeed();
+        }
+      }
+      break;
+  }
+});
+
+document.addEventListener('keyup', (e) => {
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    if (scrubbing) stopScrub();
+  }
+});
+
+// Return focus to document after dropdown/slider interaction so keyboard shortcuts work immediately
+document.querySelectorAll('select, input[type="range"]').forEach(el => {
+  el.addEventListener('change', () => el.blur());
+});
+
+requestAnimationFrame(render);
+
+</script>
+</body>
+</html>

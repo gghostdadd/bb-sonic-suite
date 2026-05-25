@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BB SAMPLER v1.0</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0a0800;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+#crt {
+  position: relative;
+  background: #0c0a02;
+  border: 1px solid #333333;
+  border-radius: 0;
+  padding: 28px 36px;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+}
+
+#crt::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.06) 2px,
+    rgba(0, 0, 0, 0.06) 4px
+  );
+  pointer-events: none;
+  border-radius: 0;
+  z-index: 10;
+}
+
+#display {
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  white-space: pre;
+  user-select: none;
+}
+
+#control-panel {
+  padding: 10px 16px;
+  position: relative;
+  z-index: 20;
+  align-self: stretch;
+  overflow: hidden;
+}
+
+.panel-border {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+  margin: 0;
+  padding: 0;
+}
+
+.panel-border-left { left: 0; }
+.panel-border-right { right: 0; }
+
+.frame-line {
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  white-space: pre;
+  user-select: none;
+}
+
+#control-panel .panel-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+#control-panel .panel-row + .panel-row {
+  margin-top: 8px;
+}
+
+.btn {
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  background: transparent;
+  color: #FFFFFF;
+  border: 1px solid #555555;
+  padding: 6px 12px;
+  cursor: pointer;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  transition: background 0.15s, border-color 0.15s;
+  letter-spacing: 1px;
+}
+
+.btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #FFFFFF;
+}
+
+.btn.rec-active {
+  color: #FF3000;
+  border-color: #FF3000;
+  text-shadow: 0 0 12px rgba(255, 48, 0, 0.5);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.btn.mode-active {
+  color: #00FF60;
+  border-color: #00FF60;
+  text-shadow: 0 0 12px rgba(0, 255, 96, 0.5);
+  background: rgba(0, 255, 96, 0.08);
+}
+
+.btn.loop-active {
+  color: #00BFFF;
+  border-color: #00BFFF;
+  text-shadow: 0 0 12px rgba(0, 191, 255, 0.5);
+  background: rgba(0, 191, 255, 0.08);
+}
+
+#file-input { display: none; }
+
+.btn:disabled {
+  color: #333333;
+  border-color: #222222;
+  cursor: default;
+  text-shadow: none;
+}
+
+.btn:disabled:hover { background: transparent; }
+
+#control-panel label {
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  letter-spacing: 1px;
+}
+
+.crt-select {
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  background: #0c0a02;
+  color: #FFFFFF;
+  border: 1px solid #555555;
+  padding: 5px 6px;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  outline: none;
+}
+
+.crt-select:hover { border-color: #FFFFFF; }
+
+.crt-select:disabled {
+  color: #333333;
+  border-color: #222222;
+  cursor: default;
+  text-shadow: none;
+}
+
+.crt-select option {
+  background: #0c0a02;
+  color: #FFFFFF;
+}
+
+#mic-select { max-width: 280px; }
+
+@keyframes pulse { 50% { opacity: 0.6; } }
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  93% { opacity: 0.92; }
+  94% { opacity: 1; }
+}
+
+#crt { animation: flicker 8s infinite; }
+
+#control-panel input[type="color"] {
+  width: 32px;
+  height: 24px;
+  border: 1px solid #555555;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+#gain-slider, #output-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100px;
+  height: 4px;
+  background: #555555;
+  outline: none;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+#gain-slider::-webkit-slider-thumb, #output-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 16px;
+  background: #FFFFFF;
+  cursor: pointer;
+  border: none;
+}
+
+#gain-slider::-moz-range-thumb, #output-slider::-moz-range-thumb {
+  width: 10px;
+  height: 16px;
+  background: #FFFFFF;
+  cursor: pointer;
+  border: none;
+}
+
+#gain-slider:disabled, #output-slider:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+</style>
+</head>
+<body>
+<div id="crt">
+  <pre id="display"></pre>
+  <pre id="frame-mid" class="frame-line"></pre>
+  <div id="control-panel">
+    <pre id="border-left" class="frame-line panel-border panel-border-left"></pre>
+    <pre id="border-right" class="frame-line panel-border panel-border-right"></pre>
+
+    <div class="panel-row">
+      <label>INPUT:</label>
+      <select id="mic-select" class="crt-select" onchange="switchDevice()">
+        <option value="">── NO DEVICES ──</option>
+      </select>
+      <button class="btn" onclick="requestAccess()" style="padding:4px 8px;font-size:11px;">⟳ DETECT</button>
+    </div>
+
+    <div class="panel-row">
+      <label>IN:</label>
+      <input type="range" id="gain-slider" min="-12" max="24" step="1" value="0" oninput="changeGain()" ondblclick="resetGain()">
+      <label id="gain-readout" style="min-width:42px;text-align:right;cursor:pointer;" ondblclick="resetGain()">0 dB</label>
+      <label>OUT:</label>
+      <input type="range" id="output-slider" min="-60" max="6" step="1" value="0" oninput="changeOutputGain()" ondblclick="resetOutputGain()">
+      <label id="output-readout" style="min-width:42px;text-align:right;cursor:pointer;" ondblclick="resetOutputGain()">0 dB</label>
+    </div>
+
+    <div class="panel-row">
+      <label>ROOT:</label>
+      <select id="root-select" class="crt-select" onchange="changeRoot()"></select>
+      <button class="btn" id="btn-mode" onclick="toggleMode()" style="padding:4px 8px;font-size:11px;">GATE</button>
+      <button class="btn" id="btn-loop" onclick="toggleLoop()" style="padding:4px 8px;font-size:11px;">⟳ LOOP</button>
+      <label>BIT:</label>
+      <select id="bit-select" class="crt-select" onchange="changeBitDepth()">
+        <option value="16" selected>16</option>
+        <option value="12">12</option>
+        <option value="8">8</option>
+        <option value="4">4</option>
+      </select>
+      <label>RATE:</label>
+      <select id="rate-select" class="crt-select" onchange="changeCrushRate()">
+        <option value="1" selected>44.1k</option>
+        <option value="2">22k</option>
+        <option value="4">11k</option>
+        <option value="8">5.5k</option>
+      </select>
+    </div>
+
+    <div class="panel-row">
+      <button class="btn" id="btn-rec" onclick="toggleRecord()">● REC</button>
+      <button class="btn" id="btn-stop" onclick="stopAll()" disabled>■ STOP</button>
+      <button class="btn" id="btn-erase" onclick="eraseSample()" disabled>✕ ERASE</button>
+      <button class="btn" id="btn-save" onclick="saveWav()" disabled>↓ SAVE</button>
+      <button class="btn" id="btn-load" onclick="document.getElementById('file-input').click()">⤒ LOAD</button>
+      <input type="file" id="file-input" accept="audio/*" onchange="loadAudioFile(event)">
+    </div>
+
+    <div class="panel-row">
+      <label>BG:</label>
+      <input type="color" id="color-bg" value="#0c0a02" onchange="applyColors()">
+      <label>TEXT:</label>
+      <input type="color" id="color-text" value="#FFFFFF" onchange="applyColors()">
+    </div>
+  </div>
+  <pre id="frame-bot" class="frame-line"></pre>
+</div>
+<script>
+
+// ── CONSTANTS ──────────────────────────────────────
+
+const W = 65;
+const VU_W = 24;
+const WAVE_W = 24;
+const SAMPLE_RATE = 44100;
+const BUFFER_SIZE = 4096;
+
+const NOTE_NAMES_CLEAN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+// Ableton Musical Typing layout
+// Bottom row (white keys): A S D F G H J K L
+// Top row (black keys):    W E   T Y U   O P
+// Z = octave down, X = octave up
+const KEY_TO_OFFSET = {
+  'a': 0,  'w': 1,  's': 2,  'e': 3,  'd': 4,
+  'f': 5,  't': 6,  'g': 7,  'y': 8,  'h': 9,
+  'u': 10, 'j': 11, 'k': 12, 'o': 13, 'l': 14, 'p': 15
+};
+
+// Piano keyboard layout data
+const WHITE_OFFSETS = [0, 2, 4, 5, 7, 9, 11, 12, 14]; // chromatic offsets for white keys
+const WHITE_NOTES   = [' C  ', ' D  ', ' E  ', ' F  ', ' G  ', ' A  ', ' B  ', ' C  ', ' D  '];
+const WHITE_KEYS    = [' A  ', ' S  ', ' D  ', ' F  ', ' G  ', ' H  ', ' J  ', ' K  ', ' L  '];
+
+const BLACK_OFFSETS = [1, 3, 6, 8, 10, 13, 15]; // chromatic offsets for black keys
+const BLACK_NOTES   = ['C#', 'D#', 'F#', 'G#', 'A#', 'C#', 'D#'];
+const BLACK_LABELS  = [' W', ' E', ' T', ' Y', ' U', ' O', ' P'];
+// Start positions of each 4-char black key box within the 47-char row
+// Each centered on the border between adjacent white keys (borders at 0,5,10,...,45)
+const BLACK_POS     = [3, 8, 18, 23, 28, 38, 43];
+
+// ── STATE ──────────────────────────────────────────
+
+let state = 'idle';  // idle | recording | ready
+let audioCtx = null;
+let stream = null;
+let sourceNode = null;
+let inputGainNode = null;
+let processorNode = null;
+let silentGain = null;
+let outputGainNode = null;
+let analyserSplitter = null;
+let playbackAnalyserL = null;
+let playbackAnalyserR = null;
+
+let originalBuffer = null;  // pristine recording/loaded sample
+let sampleBuffer = null;    // processed (bit crushed / decimated) for playback
+let chunks = [];
+let recordStart = 0;
+let elapsed = 0;
+let sampleDuration = 0;
+
+let crushBits = 16;    // bit depth: 16, 12, 8, 4
+let crushRate = 1;     // decimation factor: 1 (44.1k), 2 (22k), 4 (11k), 8 (5.5k)
+
+let rootNote = 60;       // MIDI C4
+let octaveShift = 0;
+let loopEnabled = false;
+let gateMode = true;
+
+let heldKeys = new Set();
+let voices = new Map();
+let lastNoteOffset = null;
+
+let tick = 0;
+let vuL = 0, vuR = 0;
+let rawVuL = 0, rawVuR = 0;
+let errorMsg = '';
+let loadedFileName = '';
+let selectedDeviceId = '';
+let devices = [];
+let eraseArmed = false;
+let eraseTimeout = null;
+let cachedWaveform = null;
+let sampleIn = 0;     // trim start 0.0-1.0
+let sampleOut = 1;    // trim end 0.0-1.0
+let octZFlash = 0;    // flash countdown (frames)
+let octXFlash = 0;
+
+// ── DISPLAY HELPERS ────────────────────────────────
+
+function pad(s) {
+  return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║';
+}
+
+function center(s) {
+  const l = Math.floor((W - s.length) / 2);
+  return '║' + ' '.repeat(l) + s + ' '.repeat(W - s.length - l) + '║';
+}
+
+function hBar(ch) { return '╠' + ch.repeat(W) + '╣'; }
+
+function vuBar(level) {
+  const n = Math.round(level * VU_W);
+  let bar = '';
+  for (let i = 0; i < VU_W; i++) {
+    if (i < n) {
+      bar += (i >= VU_W * 0.85) ? '▓' : '█';
+    } else {
+      bar += '░';
+    }
+  }
+  return bar;
+}
+
+function fmtTime(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const ss = s % 60;
+  const cs = Math.floor((ms % 1000) / 10);
+  return `${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;
+}
+
+function getBaseMidi() { return 48 + (octaveShift * 12); }
+
+function getNoteDisplay(offset) {
+  if (offset === null) return '--';
+  const midi = getBaseMidi() + offset;
+  const name = NOTE_NAMES_CLEAN[midi % 12];
+  const oct = Math.floor(midi / 12) - 1;
+  return name + oct;
+}
+
+function getRootDisplay() {
+  const name = NOTE_NAMES_CLEAN[rootNote % 12];
+  const oct = Math.floor(rootNote / 12) - 1;
+  return name + oct;
+}
+
+// ── WAVEFORM ───────────────────────────────────────
+
+function generateWaveform() {
+  if (!sampleBuffer) return null;
+  const data = sampleBuffer.getChannelData(0);
+  const step = Math.max(1, Math.floor(data.length / WAVE_W));
+  const blocks = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+  let wave = '';
+  for (let i = 0; i < WAVE_W; i++) {
+    let peak = 0;
+    const start = i * step;
+    for (let j = start; j < Math.min(start + step, data.length); j++) {
+      peak = Math.max(peak, Math.abs(data[j]));
+    }
+    wave += blocks[Math.min(8, Math.round(peak * 8))];
+  }
+  return wave;
+}
+
+// ── RENDER ─────────────────────────────────────────
+
+function render() {
+  tick++;
+
+  // VU smoothing
+  vuL += (rawVuL - vuL) * 0.25;
+  vuR += (rawVuR - vuR) * 0.25;
+
+  // Output VU from analysers
+  if (state === 'ready' && playbackAnalyserL && playbackAnalyserR) {
+    const bufLen = playbackAnalyserL.fftSize;
+    const dataL = new Float32Array(bufLen);
+    const dataR = new Float32Array(bufLen);
+    playbackAnalyserL.getFloatTimeDomainData(dataL);
+    playbackAnalyserR.getFloatTimeDomainData(dataR);
+    let sumL = 0, sumR = 0;
+    for (let i = 0; i < bufLen; i++) {
+      sumL += dataL[i] * dataL[i];
+      sumR += dataR[i] * dataR[i];
+    }
+    rawVuL = Math.min(1, Math.sqrt(sumL / bufLen) * 4);
+    rawVuR = Math.min(1, Math.sqrt(sumR / bufLen) * 4);
+  }
+
+  if (state === 'idle' && !processorNode) {
+    rawVuL = 0; rawVuR = 0;
+  }
+
+  // Time
+  let t;
+  if (state === 'recording') {
+    t = fmtTime(elapsed + Date.now() - recordStart);
+  } else if (sampleDuration > 0) {
+    t = fmtTime(sampleDuration * 1000);
+  } else {
+    t = fmtTime(0);
+  }
+
+  // Status
+  let statusTxt;
+  switch (state) {
+    case 'idle':      statusTxt = 'READY'; break;
+    case 'recording': statusTxt = '● REC'; break;
+    case 'ready':     statusTxt = heldKeys.size > 0 ? '♪ PLAYING' : '■ LOADED'; break;
+  }
+
+  const devName = getDeviceName();
+  const truncDev = devName.length > 20 ? devName.slice(0, 17) + '...' : devName;
+  const noteDisp = heldKeys.size > 0 ? getNoteDisplay(lastNoteOffset) : '--';
+  const rootDisp = getRootDisplay();
+  const baseOct = 3 + octaveShift;
+  const tags = [loopEnabled ? '[LOOP]' : '', !gateMode ? '[LATCH]' : ''].filter(Boolean).join(' ');
+
+  // ── Build display ──
+
+  const lines = [];
+  lines.push('╔' + '═'.repeat(W) + '╗');
+  lines.push(pad(''));
+  lines.push(center('B B  S A M P L E R  v1.0'));
+  lines.push(pad(''));
+  lines.push(hBar('═'));
+  lines.push(pad(''));
+
+  // Waveform + VU side by side
+  const waveTop = '┌' + '─'.repeat(WAVE_W) + '┐';
+  const vuLStr = 'L │' + vuBar(vuL) + '│';
+  lines.push(pad('  ' + waveTop + '   ' + vuLStr));
+
+  let waveContent;
+  if (state === 'recording') {
+    const recTxt = (tick % 30 < 15) ? '● RECORDING' : '  RECORDING';
+    const lp = Math.floor((WAVE_W - recTxt.length) / 2);
+    const rp = WAVE_W - recTxt.length - lp;
+    waveContent = '│' + ' '.repeat(lp) + recTxt + ' '.repeat(rp) + '│';
+  } else if (cachedWaveform) {
+    waveContent = '│' + cachedWaveform + '│';
+  } else {
+    const noSamp = 'NO SAMPLE LOADED';
+    const lp = Math.floor((WAVE_W - noSamp.length) / 2);
+    const rp = WAVE_W - noSamp.length - lp;
+    waveContent = '│' + ' '.repeat(lp) + noSamp + ' '.repeat(rp) + '│';
+  }
+  const vuRStr = 'R │' + vuBar(vuR) + '│';
+  lines.push(pad('  ' + waveContent + '   ' + vuRStr));
+
+  const waveBot = '└' + '─'.repeat(WAVE_W) + '┘';
+  lines.push(pad('  ' + waveBot));
+
+  // Sample trim range bar
+  rangeBarRow = lines.length;
+  const rangeW = WAVE_W;
+  const inIdx = Math.round(sampleIn * (rangeW - 1));
+  const outIdx = Math.round(sampleOut * (rangeW - 1));
+  let rangeBar = '';
+  for (let i = 0; i < rangeW; i++) {
+    if (i >= inIdx && i <= outIdx) rangeBar += '█';
+    else rangeBar += '─';
+  }
+  if (sampleBuffer) {
+    const inT = (sampleIn * sampleDuration).toFixed(2);
+    const outT = (sampleOut * sampleDuration).toFixed(2);
+    lines.push(pad('  ├' + rangeBar + '┤  TRIM: ' + inT + ' - ' + outT));
+  } else {
+    lines.push(pad('  ├' + rangeBar + '┤'));
+  }
+
+  lines.push(pad(''));
+
+  // Info lines
+  lines.push(pad('  INPUT: ' + truncDev.padEnd(22) + 'STATUS: ' + statusTxt.padEnd(12) + 'LEN: ' + t));
+
+  const notePad = noteDisp.padEnd(10);
+  const rootPad = rootDisp.padEnd(6);
+  const rateLabel = crushRate === 1 ? '44.1k' : crushRate === 2 ? '22k' : crushRate === 4 ? '11k' : '5.5k';
+  const crushInfo = crushBits + 'bit/' + rateLabel;
+  lines.push(pad('  NOTE:  ' + notePad + 'ROOT: ' + rootPad + 'OCT: ' + baseOct + '  ' + crushInfo.padEnd(12) + tags));
+
+  if (loadedFileName) {
+    const truncFile = loadedFileName.length > 40 ? loadedFileName.slice(0, 37) + '...' : loadedFileName;
+    lines.push(pad('  FILE:  ' + truncFile));
+  }
+
+  if (errorMsg) {
+    lines.push(pad('  ' + errorMsg));
+  }
+
+  lines.push(pad(''));
+
+  // Keyboard separator
+  lines.push(hBar('═'));
+  lines.push(pad(''));
+
+  // ── Piano keyboard (integrated) ──
+  // Black keys sit inside the upper portion of the white keys,
+  // connected by a transition row — like a real piano keyboard.
+  const kbW = 47;
+  const kbPad = ' '.repeat(Math.floor((W - kbW) / 2));
+
+  function kbRow(type) {
+    const arr = new Array(kbW).fill(' ');
+    switch (type) {
+      case 'top':
+        // Individual black key tops (not connected), floating above white keys
+        for (let bi = 0; bi < 7; bi++) {
+          const p = BLACK_POS[bi];
+          arr[p] = '┌'; arr[p + 1] = '─'; arr[p + 2] = '─'; arr[p + 3] = '┐';
+        }
+        break;
+      case 'bk-fill':
+      case 'bk-note':
+      case 'bk-key':
+        for (let bi = 0; bi < 7; bi++) {
+          const p = BLACK_POS[bi];
+          const active = heldKeys.has(BLACK_OFFSETS[bi]);
+          arr[p] = '│'; arr[p + 3] = '│';
+          if (type === 'bk-fill') {
+            arr[p + 1] = active ? '█' : '▓';
+            arr[p + 2] = active ? '█' : '▓';
+          } else if (type === 'bk-note') {
+            if (active) { arr[p + 1] = '█'; arr[p + 2] = '█'; }
+            else { arr[p + 1] = BLACK_NOTES[bi][0]; arr[p + 2] = BLACK_NOTES[bi][1]; }
+          } else {
+            arr[p + 1] = BLACK_LABELS[bi][0]; arr[p + 2] = BLACK_LABELS[bi][1];
+          }
+        }
+        break;
+      case 'transition':
+        arr.fill('─');
+        arr[0] = '┌';
+        for (let bi = 0; bi < 7; bi++) {
+          arr[BLACK_POS[bi]] = '┴';
+          arr[BLACK_POS[bi] + 3] = '┴';
+        }
+        for (const b of [5, 10, 15, 20, 25, 30, 35, 40, 45]) arr[b] = '┬';
+        arr[kbW - 1] = '┘';
+        break;
+      case 'wk-note':
+      case 'wk-key':
+        for (let i = 0; i <= 8; i++) arr[i * 5] = '│';
+        arr[45] = '│';
+        for (let ki = 0; ki < 9; ki++) {
+          const s = ki * 5 + 1;
+          const label = type === 'wk-note'
+            ? (heldKeys.has(WHITE_OFFSETS[ki]) ? '████' : WHITE_NOTES[ki])
+            : WHITE_KEYS[ki];
+          for (let c = 0; c < 4; c++) arr[s + c] = label[c];
+        }
+        break;
+      case 'bottom':
+        arr[0] = '└';
+        for (let i = 1; i < 45; i++) arr[i] = (i % 5 === 0) ? '┴' : '─';
+        arr[45] = '┘';
+        break;
+    }
+    return arr.join('');
+  }
+
+  kbStartRow = lines.length;
+  lines.push(pad(kbPad + kbRow('top')));
+  lines.push(pad(kbPad + kbRow('bk-fill')));
+  lines.push(pad(kbPad + kbRow('bk-note')));
+  lines.push(pad(kbPad + kbRow('bk-key')));
+  lines.push(pad(kbPad + kbRow('transition')));
+  lines.push(pad(kbPad + kbRow('wk-note')));
+  lines.push(pad(kbPad + kbRow('wk-key')));
+  lines.push(pad(kbPad + kbRow('bottom')));
+
+  // Octave shift hint (with flash feedback)
+  if (octZFlash > 0) octZFlash--;
+  if (octXFlash > 0) octXFlash--;
+  const zCh = octZFlash > 0 ? '█' : 'Z';
+  const xCh = octXFlash > 0 ? '█' : 'X';
+  lines.push(center(zCh + ' ◄── OCT ──► ' + xCh));
+  lines.push(pad(''));
+
+  document.getElementById('display').textContent = lines.join('\n');
+  document.getElementById('frame-mid').textContent = '╠' + '═'.repeat(W) + '╣';
+  document.getElementById('frame-bot').textContent = '╚' + '═'.repeat(W) + '╝';
+
+  // Side borders
+  const panel = document.getElementById('control-panel');
+  const lineH = 21.75;
+  const numLines = Math.ceil(panel.clientHeight / lineH) + 1;
+  const borderCol = new Array(numLines).fill('║').join('\n');
+  document.getElementById('border-left').textContent = borderCol;
+  document.getElementById('border-right').textContent = borderCol;
+
+  requestAnimationFrame(render);
+}
+
+// ── BUTTONS ────────────────────────────────────────
+
+function updateButtons() {
+  const btnRec   = document.getElementById('btn-rec');
+  const btnStop  = document.getElementById('btn-stop');
+  const btnErase = document.getElementById('btn-erase');
+  const btnSave  = document.getElementById('btn-save');
+  const btnLoad  = document.getElementById('btn-load');
+  const micSel   = document.getElementById('mic-select');
+  const rootSel  = document.getElementById('root-select');
+
+  btnRec.classList.remove('rec-active');
+
+  switch (state) {
+    case 'idle':
+      btnRec.disabled   = false;
+      btnStop.disabled  = true;
+      btnErase.disabled = true;
+      btnSave.disabled  = true;
+      btnLoad.disabled  = false;
+      micSel.disabled   = false;
+      rootSel.disabled  = false;
+      break;
+    case 'recording':
+      btnRec.disabled   = false;
+      btnStop.disabled  = false;
+      btnErase.disabled = true;
+      btnSave.disabled  = true;
+      btnLoad.disabled  = true;
+      micSel.disabled   = true;
+      rootSel.disabled  = true;
+      btnRec.classList.add('rec-active');
+      break;
+    case 'ready':
+      btnRec.disabled   = false;
+      btnStop.disabled  = true;
+      btnErase.disabled = false;
+      btnSave.disabled  = false;
+      btnLoad.disabled  = false;
+      micSel.disabled   = false;
+      rootSel.disabled  = false;
+      break;
+  }
+}
+
+// ── AUDIO INIT ─────────────────────────────────────
+
+async function populateDevices() {
+  const all = await navigator.mediaDevices.enumerateDevices();
+  devices = all.filter(d => d.kind === 'audioinput');
+  const sel = document.getElementById('mic-select');
+  sel.innerHTML = '';
+  devices.forEach((d, i) => {
+    const opt = document.createElement('option');
+    opt.value = d.deviceId;
+    opt.textContent = d.label || `INPUT ${i + 1}`;
+    sel.appendChild(opt);
+  });
+  if (selectedDeviceId) {
+    sel.value = selectedDeviceId;
+  } else if (devices.length > 0) {
+    selectedDeviceId = devices[0].deviceId;
+    sel.value = selectedDeviceId;
+  }
+}
+
+function getDeviceName() {
+  if (!selectedDeviceId || devices.length === 0) return 'NONE';
+  const d = devices.find(d => d.deviceId === selectedDeviceId);
+  return d ? (d.label || 'UNKNOWN') : 'NONE';
+}
+
+function onAudioProcess(e) {
+  const left = e.inputBuffer.getChannelData(0);
+  const right = e.inputBuffer.numberOfChannels > 1
+    ? e.inputBuffer.getChannelData(1) : left;
+  let sumL = 0, sumR = 0;
+  for (let i = 0; i < left.length; i++) {
+    sumL += left[i] * left[i];
+    sumR += right[i] * right[i];
+  }
+  rawVuL = Math.min(1, Math.sqrt(sumL / left.length) * 4);
+  rawVuR = Math.min(1, Math.sqrt(sumR / right.length) * 4);
+  if (state === 'recording') {
+    const interleaved = new Float32Array(left.length * 2);
+    for (let i = 0; i < left.length; i++) {
+      interleaved[i * 2] = left[i];
+      interleaved[i * 2 + 1] = right[i];
+    }
+    chunks.push(interleaved);
+  }
+}
+
+async function requestAccess() {
+  try {
+    const ok = await initAudio();
+    if (!ok) return;
+    await populateDevices();
+    navigator.mediaDevices.addEventListener('devicechange', populateDevices);
+    errorMsg = '';
+  } catch (e) {
+    errorMsg = '?ERR: MIC ACCESS DENIED';
+  }
+}
+
+async function switchDevice() {
+  selectedDeviceId = document.getElementById('mic-select').value;
+  if (!audioCtx) { await initAudio(); return; }
+  if (sourceNode) { sourceNode.disconnect(); sourceNode = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: { exact: selectedDeviceId },
+        sampleRate: SAMPLE_RATE, channelCount: 2,
+        echoCancellation: false, noiseSuppression: false, autoGainControl: false
+      }
+    });
+    sourceNode = audioCtx.createMediaStreamSource(stream);
+    if (inputGainNode) sourceNode.connect(inputGainNode);
+    else if (processorNode) sourceNode.connect(processorNode);
+    errorMsg = '';
+  } catch (e) {
+    errorMsg = '?ERR: DEVICE UNAVAILABLE';
+  }
+}
+
+async function initAudio() {
+  if (audioCtx) return true;
+  try {
+    const audioConstraints = {
+      sampleRate: SAMPLE_RATE, channelCount: 2,
+      echoCancellation: false, noiseSuppression: false, autoGainControl: false
+    };
+    if (selectedDeviceId) audioConstraints.deviceId = { exact: selectedDeviceId };
+    stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+    audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
+    sourceNode = audioCtx.createMediaStreamSource(stream);
+
+    const gainDb = parseFloat(document.getElementById('gain-slider').value);
+    inputGainNode = audioCtx.createGain();
+    inputGainNode.gain.value = Math.pow(10, gainDb / 20);
+
+    processorNode = audioCtx.createScriptProcessor(BUFFER_SIZE, 2, 2);
+    processorNode.onaudioprocess = onAudioProcess;
+    silentGain = audioCtx.createGain();
+    silentGain.gain.value = 0;
+    sourceNode.connect(inputGainNode);
+    inputGainNode.connect(processorNode);
+    processorNode.connect(silentGain);
+    silentGain.connect(audioCtx.destination);
+
+    setupOutputChain();
+
+    if (devices.length === 0) {
+      await populateDevices();
+      navigator.mediaDevices.addEventListener('devicechange', populateDevices);
+    }
+    if (!selectedDeviceId && stream.getAudioTracks().length > 0) {
+      const settings = stream.getAudioTracks()[0].getSettings();
+      if (settings.deviceId) {
+        selectedDeviceId = settings.deviceId;
+        document.getElementById('mic-select').value = selectedDeviceId;
+      }
+    }
+    errorMsg = '';
+    return true;
+  } catch (e) {
+    errorMsg = '?ERR: MIC ACCESS DENIED';
+    return false;
+  }
+}
+
+function ensureAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
+    setupOutputChain();
+  }
+}
+
+function setupOutputChain() {
+  if (!audioCtx) return;
+  const db = parseFloat(document.getElementById('output-slider').value);
+  outputGainNode = audioCtx.createGain();
+  outputGainNode.gain.value = db <= -60 ? 0 : Math.pow(10, db / 20);
+  outputGainNode.connect(audioCtx.destination);
+
+  analyserSplitter = audioCtx.createChannelSplitter(2);
+  playbackAnalyserL = audioCtx.createAnalyser();
+  playbackAnalyserR = audioCtx.createAnalyser();
+  playbackAnalyserL.fftSize = 2048;
+  playbackAnalyserR.fftSize = 2048;
+  outputGainNode.connect(analyserSplitter);
+  analyserSplitter.connect(playbackAnalyserL, 0);
+  analyserSplitter.connect(playbackAnalyserR, 1);
+}
+
+// ── RECORD ─────────────────────────────────────────
+
+async function toggleRecord() {
+  if (state === 'recording') return;
+  const ok = await initAudio();
+  if (!ok) return;
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+  stopAllNotes();
+  originalBuffer = null;
+  sampleBuffer = null;
+  cachedWaveform = null;
+  chunks = [];
+  elapsed = 0;
+  sampleDuration = 0;
+  loadedFileName = '';
+  resetTrimPoints();
+
+  state = 'recording';
+  recordStart = Date.now();
+  errorMsg = '';
+  updateButtons();
+}
+
+function stopAll() {
+  if (state === 'recording') {
+    elapsed += Date.now() - recordStart;
+    state = 'ready';
+    rawVuL = 0; rawVuR = 0;
+    buildSampleBuffer();
+    updateButtons();
+  }
+  stopAllNotes();
+  errorMsg = '';
+}
+
+function buildSampleBuffer() {
+  if (chunks.length === 0) { state = 'idle'; return; }
+  const totalLen = chunks.reduce((s, c) => s + c.length, 0);
+  const merged = new Float32Array(totalLen);
+  let off = 0;
+  for (const c of chunks) { merged.set(c, off); off += c.length; }
+
+  const numFrames = merged.length / 2;
+  ensureAudioCtx();
+  originalBuffer = audioCtx.createBuffer(2, numFrames, SAMPLE_RATE);
+  const chL = originalBuffer.getChannelData(0);
+  const chR = originalBuffer.getChannelData(1);
+  for (let i = 0; i < numFrames; i++) {
+    chL[i] = merged[i * 2];
+    chR[i] = merged[i * 2 + 1];
+  }
+  sampleDuration = numFrames / SAMPLE_RATE;
+  applyProcessing();
+}
+
+// ── SAMPLE PROCESSING (BIT CRUSH + DECIMATION) ───
+
+function applyProcessing() {
+  if (!originalBuffer) return;
+  ensureAudioCtx();
+
+  const numFrames = originalBuffer.length;
+  const srcL = originalBuffer.getChannelData(0);
+  const srcR = originalBuffer.numberOfChannels > 1 ? originalBuffer.getChannelData(1) : srcL;
+
+  sampleBuffer = audioCtx.createBuffer(2, numFrames, SAMPLE_RATE);
+  const dstL = sampleBuffer.getChannelData(0);
+  const dstR = sampleBuffer.getChannelData(1);
+
+  const levels = Math.pow(2, crushBits - 1);
+  const hold = crushRate;  // hold each sample for N frames (ZOH decimation)
+
+  let heldL = 0, heldR = 0;
+  for (let i = 0; i < numFrames; i++) {
+    if (i % hold === 0) {
+      // Sample and quantize at this point
+      heldL = Math.round(srcL[i] * levels) / levels;
+      heldR = Math.round(srcR[i] * levels) / levels;
+    }
+    dstL[i] = heldL;
+    dstR[i] = heldR;
+  }
+
+  cachedWaveform = generateWaveform();
+}
+
+// ── NOTE PLAYBACK ──────────────────────────────────
+
+function noteOn(offset) {
+  if (!sampleBuffer) return;
+  if (state !== 'ready') return;
+
+  ensureAudioCtx();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  // Retrigger: stop existing voice
+  if (voices.has(offset)) {
+    const old = voices.get(offset);
+    try { old.source.onended = null; } catch(e) {}
+    old.gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.005);
+    const oldSrc = old.source, oldGn = old.gain;
+    setTimeout(() => {
+      try { oldSrc.stop(); } catch(e) {}
+      try { oldSrc.disconnect(); } catch(e) {}
+      try { oldGn.disconnect(); } catch(e) {}
+    }, 30);
+    voices.delete(offset);
+  }
+
+  const midiNote = getBaseMidi() + offset;
+  const rate = Math.pow(2, (midiNote - rootNote) / 12);
+
+  const source = audioCtx.createBufferSource();
+  source.buffer = sampleBuffer;
+  source.playbackRate.value = rate;
+
+  // Trim points
+  const trimStart = sampleIn * sampleBuffer.duration;
+  const trimEnd = sampleOut * sampleBuffer.duration;
+
+  source.loop = loopEnabled;
+  if (loopEnabled) {
+    source.loopStart = trimStart;
+    source.loopEnd = trimEnd;
+  }
+
+  const voiceGain = audioCtx.createGain();
+  voiceGain.gain.value = 1.0;
+  source.connect(voiceGain);
+  voiceGain.connect(outputGainNode);
+
+  source.onended = () => {
+    voices.delete(offset);
+    try { voiceGain.disconnect(); } catch(e) {}
+  };
+
+  source.start(0, trimStart);
+  // For non-looping, schedule stop at the trim end point
+  if (!loopEnabled && sampleOut < 1) {
+    const realDuration = (trimEnd - trimStart) / rate;
+    source.stop(audioCtx.currentTime + realDuration);
+  }
+  voices.set(offset, { source, gain: voiceGain });
+  heldKeys.add(offset);
+  lastNoteOffset = offset;
+}
+
+function noteOff(offset) {
+  heldKeys.delete(offset);
+
+  if (gateMode) {
+    const voice = voices.get(offset);
+    if (voice) {
+      try { voice.source.onended = null; } catch(e) {}
+      voice.gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.01);
+      const src = voice.source, gn = voice.gain;
+      setTimeout(() => {
+        try { src.stop(); } catch(e) {}
+        try { src.disconnect(); } catch(e) {}
+        try { gn.disconnect(); } catch(e) {}
+      }, 50);
+      voices.delete(offset);
+    }
+  }
+
+  if (heldKeys.size === 0) lastNoteOffset = null;
+}
+
+function stopAllNotes() {
+  for (const [offset, voice] of voices) {
+    try { voice.source.onended = null; } catch(e) {}
+    try { voice.source.stop(); } catch(e) {}
+    try { voice.source.disconnect(); } catch(e) {}
+    try { voice.gain.disconnect(); } catch(e) {}
+  }
+  voices.clear();
+  heldKeys.clear();
+  lastNoteOffset = null;
+  rawVuL = 0; rawVuR = 0;
+}
+
+// ── GAIN ───────────────────────────────────────────
+
+function changeGain() {
+  const db = parseFloat(document.getElementById('gain-slider').value);
+  document.getElementById('gain-readout').textContent = (db > 0 ? '+' : '') + db + ' dB';
+  if (inputGainNode) inputGainNode.gain.value = Math.pow(10, db / 20);
+}
+function resetGain() { document.getElementById('gain-slider').value = 0; changeGain(); }
+
+function changeOutputGain() {
+  const db = parseFloat(document.getElementById('output-slider').value);
+  const label = db <= -60 ? '-∞' : (db > 0 ? '+' : '') + db;
+  document.getElementById('output-readout').textContent = label + ' dB';
+  if (outputGainNode) outputGainNode.gain.value = db <= -60 ? 0 : Math.pow(10, db / 20);
+}
+function resetOutputGain() { document.getElementById('output-slider').value = 0; changeOutputGain(); }
+
+// ── TRIM ──────────────────────────────────────────
+
+function resetTrimPoints() {
+  sampleIn = 0;
+  sampleOut = 1;
+}
+
+// ── BIT DEPTH / SAMPLE RATE ───────────────────────
+
+function changeBitDepth() {
+  crushBits = parseInt(document.getElementById('bit-select').value);
+  stopAllNotes();
+  applyProcessing();
+}
+
+function changeCrushRate() {
+  crushRate = parseInt(document.getElementById('rate-select').value);
+  stopAllNotes();
+  applyProcessing();
+}
+
+// ── ROOT NOTE ──────────────────────────────────────
+
+function populateRootNotes() {
+  const sel = document.getElementById('root-select');
+  for (let midi = 36; midi <= 84; midi++) {
+    const name = NOTE_NAMES_CLEAN[midi % 12];
+    const oct = Math.floor(midi / 12) - 1;
+    const opt = document.createElement('option');
+    opt.value = midi;
+    opt.textContent = name + oct;
+    if (midi === 60) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+function changeRoot() { rootNote = parseInt(document.getElementById('root-select').value); }
+
+// ── MODE / LOOP ────────────────────────────────────
+
+function toggleMode() {
+  gateMode = !gateMode;
+  const btn = document.getElementById('btn-mode');
+  btn.textContent = gateMode ? 'GATE' : 'LATCH';
+  btn.classList.toggle('mode-active', !gateMode);
+}
+
+function toggleLoop() {
+  loopEnabled = !loopEnabled;
+  document.getElementById('btn-loop').classList.toggle('loop-active', loopEnabled);
+}
+
+// ── ERASE ──────────────────────────────────────────
+
+function eraseSample() {
+  if (state === 'recording') return;
+  if (!eraseArmed) {
+    eraseArmed = true;
+    document.getElementById('btn-erase').textContent = '⚠ SURE?';
+    document.getElementById('btn-erase').style.color = '#FF3000';
+    document.getElementById('btn-erase').style.borderColor = '#FF3000';
+    eraseTimeout = setTimeout(() => {
+      eraseArmed = false;
+      document.getElementById('btn-erase').textContent = '✕ ERASE';
+      document.getElementById('btn-erase').style.color = '';
+      document.getElementById('btn-erase').style.borderColor = '';
+    }, 3000);
+    return;
+  }
+  clearTimeout(eraseTimeout);
+  eraseArmed = false;
+  document.getElementById('btn-erase').textContent = '✕ ERASE';
+  document.getElementById('btn-erase').style.color = '';
+  document.getElementById('btn-erase').style.borderColor = '';
+
+  stopAllNotes();
+  originalBuffer = null;
+  sampleBuffer = null;
+  cachedWaveform = null;
+  chunks = [];
+  elapsed = 0;
+  sampleDuration = 0;
+  loadedFileName = '';
+  rawVuL = 0; rawVuR = 0;
+  resetTrimPoints();
+  state = 'idle';
+  errorMsg = '';
+  updateButtons();
+}
+
+// ── SAVE ───────────────────────────────────────────
+
+function saveWav() {
+  if (!sampleBuffer) return;
+  const numCh = sampleBuffer.numberOfChannels;
+  const numFrames = sampleBuffer.length;
+  const bps = 16, bytesPer = 2;
+  const blockAlign = numCh * bytesPer;
+  const byteRate = SAMPLE_RATE * blockAlign;
+  const dataSize = numFrames * numCh * bytesPer;
+
+  const buf = new ArrayBuffer(44 + dataSize);
+  const v = new DataView(buf);
+  function ws(o, s) { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); }
+
+  ws(0, 'RIFF'); v.setUint32(4, 36 + dataSize, true);
+  ws(8, 'WAVE'); ws(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, numCh, true); v.setUint32(24, SAMPLE_RATE, true);
+  v.setUint32(28, byteRate, true); v.setUint16(32, blockAlign, true);
+  v.setUint16(34, bps, true); ws(36, 'data'); v.setUint32(40, dataSize, true);
+
+  const chL = sampleBuffer.getChannelData(0);
+  const chR = numCh > 1 ? sampleBuffer.getChannelData(1) : chL;
+  let p = 44;
+  for (let i = 0; i < numFrames; i++) {
+    const sl = Math.max(-1, Math.min(1, chL[i]));
+    v.setInt16(p, sl < 0 ? sl * 0x8000 : sl * 0x7FFF, true); p += 2;
+    const sr = Math.max(-1, Math.min(1, chR[i]));
+    v.setInt16(p, sr < 0 ? sr * 0x8000 : sr * 0x7FFF, true); p += 2;
+  }
+
+  const blob = new Blob([buf], { type: 'audio/wav' });
+  const now = new Date();
+  const ts = now.getFullYear()
+    + String(now.getMonth() + 1).padStart(2, '0')
+    + String(now.getDate()).padStart(2, '0')
+    + '_' + String(now.getHours()).padStart(2, '0')
+    + String(now.getMinutes()).padStart(2, '0')
+    + String(now.getSeconds()).padStart(2, '0');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `sample_${ts}.wav`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ── LOAD ───────────────────────────────────────────
+
+async function loadAudioFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (state === 'recording') { errorMsg = '?ERR: STOP FIRST'; e.target.value = ''; return; }
+
+  errorMsg = 'LOADING...';
+  try {
+    ensureAudioCtx();
+    stopAllNotes();
+
+    const arrayBuf = await file.arrayBuffer();
+    const decoded = await audioCtx.decodeAudioData(arrayBuf);
+
+    if (decoded.sampleRate !== SAMPLE_RATE) {
+      const ratio = SAMPLE_RATE / decoded.sampleRate;
+      const newLen = Math.round(decoded.length * ratio);
+      const offline = new OfflineAudioContext(decoded.numberOfChannels, newLen, SAMPLE_RATE);
+      const src = offline.createBufferSource();
+      src.buffer = decoded; src.connect(offline.destination); src.start(0);
+      originalBuffer = await offline.startRendering();
+    } else {
+      originalBuffer = decoded;
+    }
+
+    sampleDuration = originalBuffer.length / SAMPLE_RATE;
+    applyProcessing();
+    loadedFileName = file.name;
+    chunks = [];
+    elapsed = sampleDuration * 1000;
+    resetTrimPoints();
+    state = 'ready';
+    errorMsg = '';
+    updateButtons();
+  } catch (err) {
+    errorMsg = '?ERR: UNSUPPORTED FORMAT';
+  }
+  e.target.value = '';
+}
+
+// ── COLORS ─────────────────────────────────────────
+
+function applyColors() {
+  const bg = document.getElementById('color-bg').value;
+  const txt = document.getElementById('color-text').value;
+  document.body.style.background = bg;
+  document.getElementById('crt').style.background = bg;
+  document.getElementById('display').style.color = txt;
+  document.getElementById('display').style.textShadow = `0 0 8px ${txt}55`;
+  document.querySelectorAll('.btn, #control-panel label, .crt-select').forEach(el => {
+    el.style.color = txt;
+    el.style.borderColor = txt + '88';
+    el.style.textShadow = `0 0 8px ${txt}55`;
+  });
+  document.querySelectorAll('.crt-select option').forEach(el => el.style.color = txt);
+  document.getElementById('crt').style.borderColor = txt + '33';
+  document.getElementById('gain-slider').style.background = txt + '55';
+  document.getElementById('output-slider').style.background = txt + '55';
+  document.querySelectorAll('.frame-line').forEach(el => {
+    el.style.color = txt;
+    el.style.textShadow = `0 0 8px ${txt}55`;
+  });
+}
+
+// ── KEYBOARD ───────────────────────────────────────
+
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+  if (e.repeat) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+  const key = e.key.toLowerCase();
+
+  // Note keys
+  if (key in KEY_TO_OFFSET) {
+    e.preventDefault();
+    noteOn(KEY_TO_OFFSET[key]);
+    return;
+  }
+
+  switch (key) {
+    case 'z':
+      e.preventDefault();
+      octZFlash = 6;
+      if (octaveShift > -2) { stopAllNotes(); octaveShift--; }
+      break;
+    case 'x':
+      e.preventDefault();
+      octXFlash = 6;
+      if (octaveShift < 3) { stopAllNotes(); octaveShift++; }
+      break;
+    case ' ':
+      e.preventDefault();
+      if (state === 'recording') stopAll();
+      else stopAllNotes();
+      break;
+    case 'r':
+      e.preventDefault();
+      if (!document.getElementById('btn-rec').disabled) toggleRecord();
+      break;
+    case 'q':
+      e.preventDefault();
+      toggleLoop();
+      break;
+    case 'i':
+      e.preventDefault();
+      toggleMode();
+      break;
+    case 'escape':
+      e.preventDefault();
+      stopAllNotes();
+      break;
+    case 'backspace':
+      e.preventDefault();
+      if (!document.getElementById('btn-erase').disabled) eraseSample();
+      break;
+  }
+});
+
+document.addEventListener('keyup', (e) => {
+  const key = e.key.toLowerCase();
+  if (key in KEY_TO_OFFSET) {
+    noteOff(KEY_TO_OFFSET[key]);
+  }
+});
+
+// ── RANGE BAR INTERACTION ──────────────────────────
+
+let rangeBarRow = -1;
+let charWidth = 0;
+let displayLineHeight = 0;
+let trimDragging = null; // 'in' | 'out' | null
+let kbStartRow = -1;
+let mouseNoteOffset = null; // track note triggered by mouse click
+
+const displayEl = document.getElementById('display');
+
+function measureCharMetrics() {
+  const m = document.createElement('span');
+  m.style.font = getComputedStyle(displayEl).font;
+  m.style.position = 'absolute';
+  m.style.visibility = 'hidden';
+  m.style.whiteSpace = 'pre';
+  m.textContent = 'XXXXXXXXXXXXXXXXXXXX';
+  document.body.appendChild(m);
+  charWidth = m.offsetWidth / 20;
+  document.body.removeChild(m);
+  displayLineHeight = parseFloat(getComputedStyle(displayEl).lineHeight);
+}
+
+function getBarFrac(e) {
+  if (rangeBarRow < 0 || !charWidth) return null;
+  const rect = displayEl.getBoundingClientRect();
+  const y = e.clientY - rect.top;
+  const row = Math.floor(y / displayLineHeight);
+  if (row !== rangeBarRow) return null;
+  const x = e.clientX - rect.left;
+  const col = Math.floor(x / charWidth);
+  // Bar content starts at column 4 (║ + 2 spaces + ├ = cols 0-3, bar at 4-27)
+  const barCol = col - 4;
+  if (barCol < 0 || barCol >= WAVE_W) return null;
+  return barCol / (WAVE_W - 1);
+}
+
+function applyTrimDrag(frac) {
+  frac = Math.max(0, Math.min(1, frac));
+  if (trimDragging === 'in') {
+    sampleIn = Math.max(0, Math.min(frac, sampleOut - 0.01));
+  } else if (trimDragging === 'out') {
+    sampleOut = Math.min(1, Math.max(frac, sampleIn + 0.01));
+  }
+}
+
+function getKbNoteOffset(e) {
+  if (kbStartRow < 0 || !charWidth || !displayLineHeight) return null;
+  const rect = displayEl.getBoundingClientRect();
+  const y = e.clientY - rect.top;
+  const x = e.clientX - rect.left;
+  const row = Math.floor(y / displayLineHeight);
+  const col = Math.floor(x / charWidth);
+
+  const kbRelRow = row - kbStartRow;
+  if (kbRelRow < 0 || kbRelRow > 7) return null; // 8 keyboard rows: 0-7
+
+  const kbColOffset = 1 + Math.floor((W - 47) / 2); // ║ + padding = 15
+  const kbCol = col - kbColOffset;
+  if (kbCol < 0 || kbCol >= 47) return null;
+
+  // Black key priority in upper rows (top through transition)
+  if (kbRelRow <= 4) {
+    for (let bi = 0; bi < 7; bi++) {
+      const p = BLACK_POS[bi];
+      if (kbCol >= p && kbCol <= p + 3) {
+        return BLACK_OFFSETS[bi];
+      }
+    }
+  }
+
+  // White key detection (all rows)
+  if (kbCol >= 0 && kbCol <= 45) {
+    const whiteKeyIdx = Math.min(8, Math.floor(kbCol / 5));
+    return WHITE_OFFSETS[whiteKeyIdx];
+  }
+
+  return null;
+}
+
+displayEl.addEventListener('mousedown', (e) => {
+  // Range bar handling
+  const frac = getBarFrac(e);
+  if (frac !== null) {
+    const distIn = Math.abs(frac - sampleIn);
+    const distOut = Math.abs(frac - sampleOut);
+    trimDragging = distIn <= distOut ? 'in' : 'out';
+    applyTrimDrag(frac);
+    e.preventDefault();
+    return;
+  }
+
+  // Octave control click handling (row right after keyboard)
+  if (kbStartRow >= 0 && charWidth && displayLineHeight) {
+    const rect = displayEl.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const row = Math.floor(y / displayLineHeight);
+    if (row === kbStartRow + 8) {
+      const x = e.clientX - rect.left;
+      const col = Math.floor(x / charWidth);
+      const mid = Math.floor(W / 2) + 1;
+      if (col < mid) {
+        octZFlash = 6;
+        if (octaveShift > -2) { stopAllNotes(); octaveShift--; }
+      } else {
+        octXFlash = 6;
+        if (octaveShift < 3) { stopAllNotes(); octaveShift++; }
+      }
+      e.preventDefault();
+      return;
+    }
+  }
+
+  // Keyboard click handling
+  const offset = getKbNoteOffset(e);
+  if (offset !== null) {
+    if (mouseNoteOffset !== null) noteOff(mouseNoteOffset);
+    noteOn(offset);
+    mouseNoteOffset = offset;
+    e.preventDefault();
+  }
+});
+
+displayEl.addEventListener('mousemove', (e) => {
+  if (trimDragging || mouseNoteOffset !== null) return;
+  const frac = getBarFrac(e);
+  if (frac !== null) { displayEl.style.cursor = 'col-resize'; return; }
+  // Check octave row
+  if (kbStartRow >= 0 && charWidth && displayLineHeight) {
+    const rect = displayEl.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const row = Math.floor(y / displayLineHeight);
+    if (row === kbStartRow + 8) { displayEl.style.cursor = 'pointer'; return; }
+  }
+  const kbOff = getKbNoteOffset(e);
+  displayEl.style.cursor = kbOff !== null ? 'pointer' : '';
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (trimDragging && charWidth) {
+    const rect = displayEl.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const col = Math.floor(x / charWidth);
+    const barCol = col - 4;
+    const frac = barCol / (WAVE_W - 1);
+    applyTrimDrag(frac);
+    e.preventDefault();
+  } else if (mouseNoteOffset !== null) {
+    const offset = getKbNoteOffset(e);
+    if (offset !== null && offset !== mouseNoteOffset) {
+      noteOff(mouseNoteOffset);
+      noteOn(offset);
+      mouseNoteOffset = offset;
+    }
+    e.preventDefault();
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  if (trimDragging) {
+    trimDragging = null;
+    displayEl.style.cursor = '';
+  }
+  if (mouseNoteOffset !== null) {
+    noteOff(mouseNoteOffset);
+    mouseNoteOffset = null;
+    displayEl.style.cursor = '';
+  }
+});
+
+// ── INIT ───────────────────────────────────────────
+
+populateRootNotes();
+measureCharMetrics();
+
+// Return focus to document after dropdown/slider interaction so keyboard plays immediately
+document.querySelectorAll('select, input[type="range"]').forEach(el => {
+  el.addEventListener('change', () => el.blur());
+});
+
+requestAnimationFrame(render);
+
+</script>
+</body>
+</html>
