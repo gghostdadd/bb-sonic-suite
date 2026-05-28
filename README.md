@@ -10,6 +10,9 @@ Reel-to-reel style recorder with variable speed playback, punch-in recording, sc
 ### BB Sampler v1.0
 Chromatic sampler with keyboard playback, destructive bit crush and sample rate reduction, interactive trim controls, and 16-voice polyphony.
 
+### BB Edit v1.0
+Stereo audio editor with canvas waveform display, click-drag selection, zoom/scroll, cut/copy/paste/delete/crop, fades in/out, normalize, silence, recording, and WAV export.
+
 ## Usage
 
 Open any tool directly in your browser. Record from your microphone or load existing audio files. Everything runs locally — no data is sent anywhere.
@@ -26,6 +29,17 @@ Open any tool directly in your browser. Record from your microphone or load exis
 - `← / →` — rewind / fast-forward
 - `↑ / ↓` — speed up / down
 - `L` — loop, `E` — erase, `S` — save
+
+**Keyboard shortcuts (Edit):**
+- `Space` — play / stop
+- `R` — record
+- `L` — toggle loop
+- `Cmd/Ctrl + X/C/V/Z` — cut / copy / paste / undo
+- `Cmd/Ctrl + A` — select all
+- `Delete/Backspace` — delete selection
+- `+ / -` — zoom in / out
+- `0` — zoom fit
+- `Escape` — deselect
 
 ## License
 
