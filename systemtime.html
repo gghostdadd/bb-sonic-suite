@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BB SYSTEM TIME v1.0</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0a0800;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+#crt {
+  position: relative;
+  background: #0c0a02;
+  border: 1px solid #333333;
+  padding: 28px 36px;
+  display: flex;
+  flex-direction: column;
+  width: min-content;
+}
+
+#crt::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px);
+  pointer-events: none;
+  z-index: 10;
+}
+
+#display {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  white-space: pre;
+  user-select: none;
+}
+
+.frame-line {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  white-space: pre;
+  user-select: none;
+}
+
+/* ── Bottom Panel (two-column) ── */
+#bottom-panel {
+  position: relative;
+  z-index: 20;
+  align-self: stretch;
+  overflow: hidden;
+}
+
+#panel-inner {
+  display: flex;
+  margin: 0 9px;
+}
+
+#info-col {
+  flex: 0 0 auto;
+  padding: 12px 16px;
+  min-width: 220px;
+}
+
+#info-display {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  white-space: pre;
+  user-select: none;
+}
+
+.panel-divider {
+  width: 1px;
+  background: #333333;
+  margin: 8px 0;
+}
+
+#control-col {
+  flex: 1;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+
+#control-col .panel-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.panel-border {
+  position: absolute;
+  top: 0; bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+  margin: 0; padding: 0;
+}
+.panel-border-left { left: 0; }
+.panel-border-right { right: 0; }
+
+.btn {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 12px;
+  background: transparent;
+  color: #FFFFFF;
+  border: 1px solid #555555;
+  padding: 6px 12px;
+  cursor: pointer;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  transition: background 0.15s, border-color 0.15s;
+  letter-spacing: 1px;
+}
+.btn:hover { background: rgba(255,255,255,0.08); border-color: #FFFFFF; }
+.btn.play-active { color: #00FF60; border-color: #00FF60; text-shadow: 0 0 12px rgba(0,255,96,0.5); }
+.btn.arm-active { color: #FF3000; border-color: #FF3000; text-shadow: 0 0 12px rgba(255,48,0,0.5); animation: pulse 1s ease-in-out infinite; }
+.btn:disabled { color: #333333; border-color: #222222; cursor: default; text-shadow: none; }
+.btn:disabled:hover { background: transparent; }
+
+#control-col label {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 11px;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  letter-spacing: 1px;
+}
+
+.crt-select {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 11px;
+  background: #0c0a02;
+  color: #FFFFFF;
+  border: 1px solid #555555;
+  padding: 5px 6px;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  cursor: pointer;
+  outline: none;
+}
+.crt-select:hover { border-color: #FFFFFF; }
+.crt-select option { background: #0c0a02; color: #FFFFFF; }
+
+#output-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 80px; height: 4px;
+  background: #555555; outline: none; cursor: pointer; vertical-align: middle;
+}
+#output-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 10px; height: 16px; background: #FFFFFF; cursor: pointer; border: none;
+}
+#output-slider::-moz-range-thumb {
+  width: 10px; height: 16px; background: #FFFFFF; cursor: pointer; border: none;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  opacity: 1;
+}
+
+#file-input { display: none; }
+
+#control-col input[type="color"] {
+  width: 32px; height: 24px; border: 1px solid #555555; background: transparent; cursor: pointer; padding: 0;
+}
+
+@keyframes pulse { 50% { opacity: 0.6; } }
+@keyframes flicker { 0%, 100% { opacity: 1; } 93% { opacity: 0.92; } 94% { opacity: 1; } }
+#crt { animation: flicker 8s infinite; }
+</style>
+</head>
+<body>
+<div id="crt">
+  <pre id="display"></pre>
+  <pre id="frame-mid" class="frame-line"></pre>
+  <div id="bottom-panel">
+    <pre id="border-left" class="frame-line panel-border panel-border-left"></pre>
+    <pre id="border-right" class="frame-line panel-border panel-border-right"></pre>
+    <div id="panel-inner">
+      <div id="info-col">
+        <pre id="info-display"></pre>
+      </div>
+      <div class="panel-divider"></div>
+      <div id="control-col">
+        <div class="panel-row">
+          <label>PLAY AT</label>
+          <select id="pick-h" class="crt-select" style="width:52px;" title="Hour"></select>
+          <label>:</label>
+          <select id="pick-m" class="crt-select" style="width:52px;" title="Minute"></select>
+          <label>:</label>
+          <select id="pick-s" class="crt-select" style="width:52px;" title="Second"></select>
+          <select id="pick-ampm" class="crt-select" style="width:52px; display:none;" title="AM/PM">
+            <option value="AM">AM</option>
+            <option value="PM">PM</option>
+          </select>
+          <button class="btn" id="btn-arm" onclick="toggleArm()" style="min-width:90px;" disabled>⏺ ARM</button>
+        </div>
+        <div class="panel-row">
+          <button class="btn" id="btn-load" onclick="document.getElementById('file-input').click()">⤒ LOAD</button>
+          <input type="file" id="file-input" accept="audio/*" onchange="loadFile(event)">
+          <button class="btn" id="btn-play" onclick="playAudio()" disabled>► PLAY</button>
+          <button class="btn" id="btn-stop" onclick="stopAudio()" disabled>■ STOP</button>
+          <span style="display:inline-block;width:1px;height:20px;background:#333;margin:0 4px;vertical-align:middle;"></span>
+          <button class="btn" id="btn-clock-mode" onclick="toggleClockMode()">24H</button>
+        </div>
+        <div class="panel-row">
+          <label>REPEAT EVERY</label>
+          <input type="number" id="repeat-val" class="crt-select" style="width:52px;" min="0" max="999" value="0">
+          <select id="repeat-unit" class="crt-select" style="width:62px;">
+            <option value="sec">SEC</option>
+            <option value="min">MIN</option>
+            <option value="hr">HR</option>
+          </select>
+        </div>
+        <div class="panel-row">
+          <label>OUT:</label>
+          <input type="range" id="output-slider" min="-60" max="6" step="1" value="0" oninput="changeGain()" ondblclick="resetGain()">
+          <label id="gain-readout" style="min-width:42px;text-align:right;cursor:pointer;" ondblclick="resetGain()">0 dB</label>
+        </div>
+        <div class="panel-row">
+          <label>BG:</label>
+          <input type="color" id="color-bg" value="#0c0a02" onchange="applyColors()">
+          <label>TEXT:</label>
+          <input type="color" id="color-text" value="#FFFFFF" onchange="applyColors()">
+        </div>
+      </div>
+    </div>
+  </div>
+  <pre id="frame-bot" class="frame-line"></pre>
+</div>
+
+<script>
+
+// ── CONSTANTS ─────────────────────────────────────
+const W = 76;
+
+// ── BIG DIGIT FONT (7 wide × 7 tall) ────────────
+const DIGITS = [
+  ['███████','█     █','█     █','█     █','█     █','█     █','███████'], // 0
+  ['      █','      █','      █','      █','      █','      █','      █'], // 1
+  ['███████','      █','      █','███████','█      ','█      ','███████'], // 2
+  ['███████','      █','      █','███████','      █','      █','███████'], // 3
+  ['█     █','█     █','█     █','███████','      █','      █','      █'], // 4
+  ['███████','█      ','█      ','███████','      █','      █','███████'], // 5
+  ['███████','█      ','█      ','███████','█     █','█     █','███████'], // 6
+  ['███████','      █','      █','      █','      █','      █','      █'], // 7
+  ['███████','█     █','█     █','███████','█     █','█     █','███████'], // 8
+  ['███████','█     █','█     █','███████','      █','      █','███████'], // 9
+];
+const COLON_ON  = ['   ',' █ ',' █ ','   ',' █ ',' █ ','   '];
+const COLON_OFF = ['   ','   ','   ','   ','   ','   ','   '];
+
+// ── STATE ─────────────────────────────────────────
+let audioCtx = null;
+let audioBuffer = null;
+let playSource = null;
+let outputGainNode = null;
+let state = 'idle';    // idle | stopped | playing
+let armed = false;
+let triggered = false;
+let use12h = false;
+let fileName = '';
+let fileDuration = 0;
+let repeatTimer = null;
+
+// ── DISPLAY HELPERS ───────────────────────────────
+function pad(s) { return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║'; }
+function center(s) { const l = Math.floor((W - s.length) / 2); return '║' + ' '.repeat(l) + s + ' '.repeat(W - s.length - l) + '║'; }
+function hBar(ch) { return '╠' + ch.repeat(W) + '╣'; }
+
+function fmtDur(seconds) {
+  const s = Math.floor(seconds);
+  const m = Math.floor(s / 60);
+  const ss = s % 60;
+  const cs = Math.floor((seconds % 1) * 100);
+  return `${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;
+}
+
+function fmtCountdown(totalSec) {
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+// ── CLOCK RENDERING ──────────────────────────────
+function to12h(h24) {
+  const ampm = h24 >= 12 ? 'PM' : 'AM';
+  let h12 = h24 % 12;
+  if (h12 === 0) h12 = 12;
+  return { h: h12, ampm };
+}
+
+// Each digit: 7 wide. Colon: 3 wide. Gap: 1 char.
+// 24h total: 7+1+7 + 1+3+1 + 7+1+7 + 1+3+1 + 7+1+7 = 55 chars
+// 12h total: 55 + 3 (gap) + 2*7+1 (AM/PM) = 55+3+15 = 73... too wide
+// Instead: use small AM/PM text below the clock
+function renderBigClock(h, m, s, showColon) {
+  let displayH = h;
+  if (use12h) displayH = to12h(h).h;
+
+  const d = [
+    Math.floor(displayH / 10), displayH % 10,
+    Math.floor(m / 10), m % 10,
+    Math.floor(s / 10), s % 10
+  ];
+  const colon = showColon ? COLON_ON : COLON_OFF;
+  const lines = [];
+
+  // Skip leading zero in 12h mode (e.g. show " 9" not "09")
+  const leadDigit = (use12h && d[0] === 0) ? '       ' : DIGITS[d[0]];
+
+  for (let row = 0; row < 7; row++) {
+    const ld = (typeof leadDigit === 'string') ? leadDigit : leadDigit[row];
+    lines.push(
+      ld + ' ' + DIGITS[d[1]][row] +
+      ' ' + colon[row] + ' ' +
+      DIGITS[d[2]][row] + ' ' + DIGITS[d[3]][row] +
+      ' ' + colon[row] + ' ' +
+      DIGITS[d[4]][row] + ' ' + DIGITS[d[5]][row]
+    );
+  }
+  return lines; // each line is 55 chars
+}
+
+function getSecondsUntil(tH, tM, tS) {
+  const now = new Date();
+  const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  let targetSec = tH * 3600 + tM * 60 + tS;
+  if (targetSec < nowSec) targetSec += 86400;
+  return targetSec - nowSec;
+}
+
+// ── RENDER LOOP ──────────────────────────────────
+function render() {
+  const now = new Date();
+  const showColon = now.getMilliseconds() < 500;
+
+  // ── Check armed trigger ──
+  if (armed && audioBuffer && state !== 'playing') {
+    const tH = getPickerHour24();
+    const tM = parseInt(document.getElementById('pick-m').value);
+    const tS = parseInt(document.getElementById('pick-s').value);
+    if (now.getHours() === tH && now.getMinutes() === tM && now.getSeconds() === tS) {
+      if (!triggered) {
+        triggered = true;
+        playAudio();
+        armed = false;
+        startRepeat();
+        updateButtons();
+      }
+    } else {
+      triggered = false;
+    }
+  }
+
+  // ── Build top display (title + clock + date) ──
+  const lines = [];
+  lines.push('╔' + '═'.repeat(W) + '╗');
+  lines.push(pad(''));
+  lines.push(center('B B  S Y S T E M  T I M E  v1.0'));
+  lines.push(pad(''));
+  lines.push(hBar('═'));
+  lines.push(pad(''));
+
+  // Big clock — 7 lines, each 55 chars, centered in W
+  const clockLines = renderBigClock(now.getHours(), now.getMinutes(), now.getSeconds(), showColon);
+  for (const cl of clockLines) {
+    const lp = Math.floor((W - cl.length) / 2);
+    const rp = W - cl.length - lp;
+    lines.push('║' + ' '.repeat(lp) + cl + ' '.repeat(rp) + '║');
+  }
+
+  // AM/PM indicator (12h mode)
+  if (use12h) {
+    lines.push(center(to12h(now.getHours()).ampm));
+  } else {
+    lines.push(pad(''));
+  }
+
+  // Date line
+  const days = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'];
+  const dateStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+  lines.push(center(dateStr + '  ' + days[now.getDay()]));
+
+  lines.push(pad(''));
+
+  document.getElementById('display').textContent = lines.join('\n');
+  document.getElementById('frame-mid').textContent = hBar('═');
+  document.getElementById('frame-bot').textContent = '╚' + '═'.repeat(W) + '╝';
+
+  // ── Build info column ──
+  let statusTxt;
+  if (state === 'playing') statusTxt = '► PLAYING';
+  else if (armed) statusTxt = '⏺ ARMED';
+  else if (state === 'stopped') statusTxt = '■ STOPPED';
+  else statusTxt = 'READY';
+
+  const fileStr = fileName || '(none)';
+  const truncFile = fileStr.length > 26 ? fileStr.slice(0, 23) + '...' : fileStr;
+  const durStr = audioBuffer ? fmtDur(fileDuration) : '--:--';
+
+  const infoLines = [];
+  infoLines.push('STATUS: ' + statusTxt);
+  infoLines.push('FILE: ' + truncFile);
+  infoLines.push('LEN:  ' + durStr);
+  infoLines.push('');
+
+  if (armed) {
+    const tH = getPickerHour24();
+    const tM = parseInt(document.getElementById('pick-m').value);
+    const tS = parseInt(document.getElementById('pick-s').value);
+    let timeStr;
+    if (use12h) {
+      const conv = to12h(tH);
+      timeStr = String(conv.h) + ':' + String(tM).padStart(2,'0') + ':' + String(tS).padStart(2,'0') + ' ' + conv.ampm;
+    } else {
+      timeStr = String(tH).padStart(2,'0') + ':' + String(tM).padStart(2,'0') + ':' + String(tS).padStart(2,'0');
+    }
+    const remaining = getSecondsUntil(tH, tM, tS);
+    infoLines.push('PLAY AT: ' + timeStr);
+    infoLines.push('IN:      ' + fmtCountdown(remaining));
+  } else {
+    infoLines.push('PLAY AT: --:--:--');
+    infoLines.push('IN:      --:--:--');
+  }
+
+  // Repeat info
+  const repVal = parseInt(document.getElementById('repeat-val').value) || 0;
+  if (repVal > 0) {
+    const repUnit = document.getElementById('repeat-unit').value.toUpperCase();
+    const repStr = repVal + ' ' + repUnit;
+    infoLines.push('REPEAT:  ' + repStr + (repeatTimer ? ' ●' : ''));
+  }
+
+  document.getElementById('info-display').textContent = infoLines.join('\n');
+
+  // ── Panel borders ──
+  const lineH = 21.75;
+  const panel = document.getElementById('bottom-panel');
+  const panelLines = Math.ceil(panel.clientHeight / lineH) + 1;
+  const panelBorder = new Array(panelLines).fill('║').join('\n');
+  document.getElementById('border-left').textContent = panelBorder;
+  document.getElementById('border-right').textContent = panelBorder;
+
+  requestAnimationFrame(render);
+}
+
+// ── AUDIO ────────────────────────────────────────
+function ensureAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new AudioContext();
+    outputGainNode = audioCtx.createGain();
+    outputGainNode.connect(audioCtx.destination);
+  }
+}
+
+async function loadFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (state === 'playing') stopAudio();
+
+  try {
+    ensureAudioCtx();
+    const arrayBuf = await file.arrayBuffer();
+    audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
+    fileName = file.name;
+    fileDuration = audioBuffer.duration;
+    state = 'stopped';
+    updateButtons();
+  } catch (err) {
+    console.error('Load error:', err);
+    fileName = '?ERR: ' + (err.message || 'UNSUPPORTED');
+    audioBuffer = null;
+  }
+  e.target.value = '';
+}
+
+function playAudio() {
+  if (!audioBuffer) return;
+  stopPlayback();
+  ensureAudioCtx();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  playSource = audioCtx.createBufferSource();
+  playSource.buffer = audioBuffer;
+  playSource.connect(outputGainNode);
+  playSource.onended = () => {
+    if (state === 'playing') {
+      state = 'stopped';
+      updateButtons();
+    }
+  };
+  playSource.start(0);
+  state = 'playing';
+  updateButtons();
+}
+
+function stopAudio() {
+  stopPlayback();
+  clearRepeat();
+  if (armed) { armed = false; triggered = false; }
+  state = audioBuffer ? 'stopped' : 'idle';
+  updateButtons();
+}
+
+function stopPlayback() {
+  if (playSource) {
+    try { playSource.stop(); } catch(e) {}
+    playSource.disconnect();
+    playSource = null;
+  }
+}
+
+// ── REPEAT ───────────────────────────────────────
+function getRepeatMs() {
+  const val = parseInt(document.getElementById('repeat-val').value) || 0;
+  if (val <= 0) return 0;
+  const unit = document.getElementById('repeat-unit').value;
+  if (unit === 'sec') return val * 1000;
+  if (unit === 'min') return val * 60 * 1000;
+  return val * 3600 * 1000; // hr
+}
+
+function startRepeat() {
+  clearRepeat();
+  const ms = getRepeatMs();
+  if (ms <= 0) return;
+  repeatTimer = setInterval(() => {
+    if (audioBuffer) playAudio();
+  }, ms);
+}
+
+function clearRepeat() {
+  if (repeatTimer) { clearInterval(repeatTimer); repeatTimer = null; }
+}
+
+// ── COLORS ───────────────────────────────────────
+function applyColors() {
+  const bg = document.getElementById('color-bg').value;
+  const txt = document.getElementById('color-text').value;
+  document.body.style.background = bg;
+  document.getElementById('crt').style.background = bg;
+  document.getElementById('display').style.color = txt;
+  document.getElementById('display').style.textShadow = `0 0 8px ${txt}55`;
+  document.getElementById('info-display').style.color = txt;
+  document.getElementById('info-display').style.textShadow = `0 0 8px ${txt}55`;
+  document.querySelectorAll('.btn, #control-col label, .crt-select').forEach(el => {
+    el.style.color = txt; el.style.borderColor = txt + '88'; el.style.textShadow = `0 0 8px ${txt}55`;
+  });
+  document.querySelectorAll('.crt-select option').forEach(el => el.style.color = txt);
+  document.getElementById('crt').style.borderColor = txt + '33';
+  document.getElementById('output-slider').style.background = txt + '55';
+  document.querySelectorAll('.frame-line').forEach(el => {
+    el.style.color = txt; el.style.textShadow = `0 0 8px ${txt}55`;
+  });
+  document.querySelector('.panel-divider').style.background = txt + '33';
+}
+
+// ── CONTROLS ─────────────────────────────────────
+function toggleClockMode() {
+  // Convert current picker value before switching
+  const hSel = document.getElementById('pick-h');
+  const ampmSel = document.getElementById('pick-ampm');
+  const oldH24 = getPickerHour24();
+
+  use12h = !use12h;
+
+  // Rebuild hour options
+  hSel.innerHTML = '';
+  if (use12h) {
+    for (let i = 1; i <= 12; i++) {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = String(i);
+      hSel.appendChild(opt);
+    }
+    // Set from the old 24h value
+    const conv = to12h(oldH24);
+    hSel.value = conv.h;
+    ampmSel.value = conv.ampm;
+    ampmSel.style.display = '';
+  } else {
+    for (let i = 0; i < 24; i++) {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = String(i).padStart(2, '0');
+      hSel.appendChild(opt);
+    }
+    hSel.value = oldH24;
+    ampmSel.style.display = 'none';
+  }
+
+  document.getElementById('btn-clock-mode').textContent = use12h ? '12H' : '24H';
+}
+
+// Get the selected hour as 24h value regardless of mode
+function getPickerHour24() {
+  const h = parseInt(document.getElementById('pick-h').value);
+  if (!use12h) return h;
+  const ampm = document.getElementById('pick-ampm').value;
+  if (ampm === 'AM') return h === 12 ? 0 : h;
+  return h === 12 ? 12 : h + 12;
+}
+
+function toggleArm() {
+  armed = !armed;
+  triggered = false;
+  updateButtons();
+}
+
+function changeGain() {
+  const db = parseFloat(document.getElementById('output-slider').value);
+  const label = db <= -60 ? '-∞' : (db > 0 ? '+' : '') + db;
+  document.getElementById('gain-readout').textContent = label + ' dB';
+  if (outputGainNode) outputGainNode.gain.value = db <= -60 ? 0 : Math.pow(10, db / 20);
+}
+
+function resetGain() {
+  document.getElementById('output-slider').value = 0;
+  changeGain();
+}
+
+function updateButtons() {
+  const hasAudio = !!audioBuffer;
+  document.getElementById('btn-play').disabled = !hasAudio;
+  document.getElementById('btn-stop').disabled = state !== 'playing';
+  document.getElementById('btn-arm').disabled = !hasAudio;
+
+  const armBtn = document.getElementById('btn-arm');
+  if (armed) {
+    armBtn.textContent = '⏺ DISARM';
+    armBtn.classList.add('arm-active');
+  } else {
+    armBtn.textContent = '⏺ ARM';
+    armBtn.classList.remove('arm-active');
+  }
+
+  const playBtn = document.getElementById('btn-play');
+  if (state === 'playing') playBtn.classList.add('play-active');
+  else playBtn.classList.remove('play-active');
+}
+
+// ── KEYBOARD SHORTCUTS ───────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+
+  switch (e.key) {
+    case ' ':
+      e.preventDefault();
+      if (state === 'playing') stopAudio();
+      else if (audioBuffer) playAudio();
+      break;
+    case 'a':
+      e.preventDefault();
+      if (audioBuffer) toggleArm();
+      break;
+  }
+});
+
+// ── INIT ─────────────────────────────────────────
+const hSel = document.getElementById('pick-h');
+const mSel = document.getElementById('pick-m');
+const sSel = document.getElementById('pick-s');
+
+for (let i = 0; i < 24; i++) {
+  const opt = document.createElement('option');
+  opt.value = i;
+  opt.textContent = String(i).padStart(2, '0');
+  hSel.appendChild(opt);
+}
+for (let i = 0; i < 60; i++) {
+  const optM = document.createElement('option');
+  optM.value = i;
+  optM.textContent = String(i).padStart(2, '0');
+  mSel.appendChild(optM);
+
+  const optS = document.createElement('option');
+  optS.value = i;
+  optS.textContent = String(i).padStart(2, '0');
+  sSel.appendChild(optS);
+}
+
+// Default target: current time + 1 minute
+const initNow = new Date();
+hSel.value = initNow.getHours();
+mSel.value = Math.min(59, initNow.getMinutes() + 1);
+sSel.value = 0;
+
+// Blur controls after use so keyboard shortcuts keep working
+document.querySelectorAll('select, input[type="range"], input[type="number"]').forEach(el => {
+  el.addEventListener('change', () => el.blur());
+});
+document.querySelectorAll('button').forEach(el => {
+  el.addEventListener('mouseup', () => el.blur());
+});
+
+updateButtons();
+requestAnimationFrame(render);
+
+</script>
+</body>
+</html>
