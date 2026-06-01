@@ -24,6 +24,7 @@ body {
   box-shadow: none;
   display: flex;
   flex-direction: column;
+  width: min-content;
 }
 
 #crt::before {
@@ -1456,11 +1457,9 @@ function handlePointerDown(clientX, clientY) {
 
   // Octave control click handling
   if (kbStartRow >= 0 && charWidth && displayLineHeight) {
-    const rect = displayEl.getBoundingClientRect();
-    const y = clientY - rect.top;
+    const { x, y } = getScaledXY(clientX, clientY);
     const row = Math.floor(y / displayLineHeight);
     if (row === kbStartRow + 8) {
-      const x = clientX - rect.left;
       const col = Math.floor(x / charWidth);
       const mid = Math.floor(W / 2) + 1;
       if (col < mid) {
@@ -1487,8 +1486,7 @@ function handlePointerDown(clientX, clientY) {
 
 function handlePointerMove(clientX, clientY) {
   if (trimDragging && charWidth) {
-    const rect = displayEl.getBoundingClientRect();
-    const x = clientX - rect.left;
+    const { x } = getScaledXY(clientX, clientY);
     const col = Math.floor(x / charWidth);
     const barCol = col - 4;
     const frac = barCol / (WAVE_W - 1);
@@ -1519,13 +1517,22 @@ function handlePointerUp() {
 }
 
 // XY versions of hit-test helpers (take clientX/clientY instead of event)
+// Compensate for CSS transform scale on mobile
+function getScaledXY(clientX, clientY) {
+  const rect = displayEl.getBoundingClientRect();
+  const scaleX = displayEl.offsetWidth / rect.width;
+  const scaleY = displayEl.offsetHeight / rect.height;
+  return {
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top) * scaleY
+  };
+}
+
 function getBarFracXY(clientX, clientY) {
   if (rangeBarRow < 0 || !charWidth || !displayLineHeight) return null;
-  const rect = displayEl.getBoundingClientRect();
-  const y = clientY - rect.top;
+  const { x, y } = getScaledXY(clientX, clientY);
   const row = Math.floor(y / displayLineHeight);
   if (row !== rangeBarRow) return null;
-  const x = clientX - rect.left;
   const col = Math.floor(x / charWidth);
   const barCol = col - 4;
   if (barCol < 0 || barCol >= WAVE_W) return null;
@@ -1534,9 +1541,7 @@ function getBarFracXY(clientX, clientY) {
 
 function getKbNoteOffsetXY(clientX, clientY) {
   if (kbStartRow < 0 || !charWidth || !displayLineHeight || !audioBuffer) return null;
-  const rect = displayEl.getBoundingClientRect();
-  const y = clientY - rect.top;
-  const x = clientX - rect.left;
+  const { x, y } = getScaledXY(clientX, clientY);
   const row = Math.floor(y / displayLineHeight);
   const col = Math.floor(x / charWidth);
   const kbRelRow = row - kbStartRow;
@@ -1567,8 +1572,7 @@ displayEl.addEventListener('mousemove', (e) => {
   const frac = getBarFracXY(e.clientX, e.clientY);
   if (frac !== null) { displayEl.style.cursor = 'col-resize'; return; }
   if (kbStartRow >= 0 && charWidth && displayLineHeight) {
-    const rect = displayEl.getBoundingClientRect();
-    const y = e.clientY - rect.top;
+    const { y } = getScaledXY(e.clientX, e.clientY);
     const row = Math.floor(y / displayLineHeight);
     if (row === kbStartRow + 8) { displayEl.style.cursor = 'pointer'; return; }
   }

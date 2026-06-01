@@ -755,7 +755,7 @@ function initCanvasEvents() {
     if (!audioData) return;
     selAnchor = null;
     const rect = waveformCanvas.getBoundingClientRect();
-    const px = clientX - rect.left;
+    const px = (clientX - rect.left) * (canvasW / rect.width);
     const sample = pixelToSample(px);
     isDragging = true;
     if (shiftKey) {
@@ -777,7 +777,7 @@ function initCanvasEvents() {
   function pointerMove(clientX) {
     if (!isDragging || !audioData) return;
     const rect = waveformCanvas.getBoundingClientRect();
-    const px = clientX - rect.left;
+    const px = (clientX - rect.left) * (canvasW / rect.width);
     const sample = pixelToSample(px);
     if (sample < dragStartSample) { selStart = sample; selEnd = dragStartSample; }
     else { selStart = dragStartSample; selEnd = sample; }
