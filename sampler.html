@@ -1540,7 +1540,7 @@ function getBarFracXY(clientX, clientY) {
 }
 
 function getKbNoteOffsetXY(clientX, clientY) {
-  if (kbStartRow < 0 || !charWidth || !displayLineHeight || !audioBuffer) return null;
+  if (kbStartRow < 0 || !charWidth || !displayLineHeight || !sampleBuffer) return null;
   const { x, y } = getScaledXY(clientX, clientY);
   const row = Math.floor(y / displayLineHeight);
   const col = Math.floor(x / charWidth);
