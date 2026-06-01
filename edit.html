@@ -201,6 +201,9 @@ body {
       <label>OUT:</label>
       <input type="range" id="output-slider" min="-60" max="6" step="1" value="0" oninput="changeOutputGain()" ondblclick="resetOutputGain()">
       <label id="output-readout" style="min-width:42px;text-align:right;cursor:pointer;" ondblclick="resetOutputGain()">0 dB</label>
+      <label>XF:</label>
+      <input type="number" id="xfade-len" class="crt-select" style="width:58px;" min="0" max="9999" value="10" title="Crossfade ms at gain boundaries">
+      <label>ms</label>
     </div>
 
     <div class="panel-row">
@@ -676,12 +679,36 @@ function drawWaveform() {
   }
 }
 
+function getGainAtSample(i) {
+  const gain = getOutputGainLinear();
+  if (gain === 1) return 1;
+  const hasSel = selStart !== selEnd;
+  if (!hasSel) return gain; // whole file
+
+  if (i < selStart || i >= selEnd) return 1; // outside selection
+
+  // Crossfade ramps
+  const xfadeMs = parseInt(document.getElementById('xfade-len').value) || 0;
+  const xfadeSamples = Math.round(xfadeMs * SAMPLE_RATE / 1000);
+  const selLen = selEnd - selStart;
+  const fadeSamples = Math.min(xfadeSamples, Math.floor(selLen / 2));
+
+  if (fadeSamples > 0 && i < selStart + fadeSamples) {
+    const t = (i - selStart) / fadeSamples;
+    return 1 + (gain - 1) * t;
+  }
+  if (fadeSamples > 0 && i >= selEnd - fadeSamples) {
+    const t = (selEnd - 1 - i) / fadeSamples;
+    return 1 + (gain - 1) * t;
+  }
+  return gain;
+}
+
 function drawChannel(data, yOffset, height, width, numVisible, selX1, selX2) {
   const centerY = yOffset + height / 2;
   const amp = height / 2 - 2;
   const samplesPerPixel = numVisible / width;
   const hasSel = selX1 >= 0;
-  const gain = getOutputGainLinear();
 
   waveCtx.globalAlpha = 0.8;
 
@@ -690,7 +717,7 @@ function drawChannel(data, yOffset, height, width, numVisible, selX1, selX2) {
     const s1 = viewStart + Math.ceil((px + 1) * samplesPerPixel);
     let min = 0, max = 0;
     for (let i = s0; i < s1 && i < data.length; i++) {
-      const s = data[i] * gain;
+      const s = data[i] * getGainAtSample(i);
       if (s < min) min = s;
       if (s > max) max = s;
     }
@@ -753,6 +780,7 @@ function initCanvasEvents() {
   // ── Shared pointer helpers ──
   function pointerDown(clientX, shiftKey) {
     if (!audioData) return;
+    commitGain();
     selAnchor = null;
     const rect = waveformCanvas.getBoundingClientRect();
     const px = (clientX - rect.left) * (canvasW / rect.width);
@@ -972,9 +1000,8 @@ function ensureAudioCtx() {
 
 function setupOutputChain() {
   if (!audioCtx) return;
-  const db = parseFloat(document.getElementById('output-slider').value);
   outputGainNode = audioCtx.createGain();
-  outputGainNode.gain.value = db <= -60 ? 0 : Math.pow(10, db / 20);
+  outputGainNode.gain.value = 1; // gain is baked into buffer, not applied here
   outputGainNode.connect(audioCtx.destination);
   playbackSplitter = audioCtx.createChannelSplitter(2);
   playbackAnalyserL = audioCtx.createAnalyser();
@@ -1050,9 +1077,19 @@ function playAll() {
 function applyFormatToBuffer(left, right) {
   const bps = parseInt(document.getElementById('save-bits').value);
   const mono = isMonoMode();
+  const gain = getOutputGainLinear();
+  const hasSel = selStart !== selEnd;
 
   let outL = new Float32Array(left);
   let outR = new Float32Array(right);
+
+  // Apply gain with crossfade to selection, or whole file if no selection
+  if (gain !== 1) {
+    for (let i = 0; i < outL.length; i++) {
+      const g = getGainAtSample(i);
+      if (g !== 1) { outL[i] *= g; outR[i] *= g; }
+    }
+  }
 
   // Mono mixdown
   if (mono) {
@@ -1167,6 +1204,7 @@ function stopAll() {
 
 function goToStart() {
   if (!audioData) return;
+  commitGain();
   if (state === 'playing') stopAll();
   cursorPos = 0;
   selStart = 0; selEnd = 0;
@@ -1176,6 +1214,7 @@ function goToStart() {
 
 function goToEnd() {
   if (!audioData) return;
+  commitGain();
   if (state === 'playing') stopAll();
   cursorPos = getTotalSamples();
   selStart = 0; selEnd = 0;
@@ -1439,10 +1478,60 @@ function changeOutputGain() {
   const db = parseFloat(document.getElementById('output-slider').value);
   const label = db <= -60 ? '-∞' : (db > 0 ? '+' : '') + db;
   document.getElementById('output-readout').textContent = label + ' dB';
-  if (outputGainNode) outputGainNode.gain.value = getOutputGainLinear();
+  // Keep outputGainNode at unity — gain is baked into the buffer per-selection
+  if (outputGainNode) outputGainNode.gain.value = 1;
   drawWaveform();
+  // Restart playback with new gain if playing
+  if (state === 'playing') {
+    if (selStart !== selEnd) play(selStart, selEnd);
+    else play(cursorPos, getTotalSamples());
+  }
 }
 function resetOutputGain() { document.getElementById('output-slider').value = 0; changeOutputGain(); }
+
+// Commit the current OUT gain to audioData with crossfade at boundaries
+function commitGain() {
+  if (!audioData) return;
+  const gain = getOutputGainLinear();
+  if (gain === 1) return; // nothing to commit
+
+  saveUndo();
+  const hasSel = selStart !== selEnd;
+  const from = hasSel ? selStart : 0;
+  const to = hasSel ? selEnd : audioData.left.length;
+  const totalLen = audioData.left.length;
+
+  // Crossfade length in samples
+  const xfadeMs = parseInt(document.getElementById('xfade-len').value) || 0;
+  const xfadeSamples = Math.round(xfadeMs * SAMPLE_RATE / 1000);
+
+  // Clamp fade length so it doesn't exceed half the selection
+  const selLen = to - from;
+  const fadeSamples = Math.min(xfadeSamples, Math.floor(selLen / 2));
+
+  for (let i = from; i < to; i++) {
+    let g = gain;
+
+    // Fade in at start boundary (ramp from 1.0 toward gain)
+    if (fadeSamples > 0 && hasSel && i < from + fadeSamples) {
+      const t = (i - from) / fadeSamples; // 0→1
+      g = 1 + (gain - 1) * t; // lerp from 1.0 to gain
+    }
+    // Fade out at end boundary (ramp from gain back toward 1.0)
+    else if (fadeSamples > 0 && hasSel && i >= to - fadeSamples) {
+      const t = (to - 1 - i) / fadeSamples; // 1→0
+      g = 1 + (gain - 1) * t; // lerp from gain to 1.0
+    }
+
+    audioData.left[i] *= g;
+    audioData.right[i] *= g;
+  }
+
+  // Reset slider to 0 dB
+  document.getElementById('output-slider').value = 0;
+  document.getElementById('output-readout').textContent = '0 dB';
+  drawWaveform();
+}
 
 // ── ERASE ─────────────────────────────────────────
 function eraseAll() {
@@ -1495,13 +1584,13 @@ async function saveWav() {
   const bytesPer = bps / 8;
   const fmtCode = bps === 32 ? 3 : 1; // 3 = IEEE float, 1 = PCM int
 
-  // Apply output gain to export data
-  const outGain = getOutputGainLinear();
+  // Apply output gain with crossfade to selection, or whole file if no selection
   let leftOut = new Float32Array(audioData.left.length);
   let rightOut = new Float32Array(audioData.right.length);
   for (let i = 0; i < leftOut.length; i++) {
-    leftOut[i] = audioData.left[i] * outGain;
-    rightOut[i] = audioData.right[i] * outGain;
+    const g = getGainAtSample(i);
+    leftOut[i] = audioData.left[i] * g;
+    rightOut[i] = audioData.right[i] * g;
   }
 
   if (targetRate !== SAMPLE_RATE) {
@@ -1734,6 +1823,7 @@ document.addEventListener('keydown', (e) => {
       case 'z': e.preventDefault(); undo(); return;
       case 'a':
         e.preventDefault();
+        commitGain();
         if (audioData) { selStart = 0; selEnd = getTotalSamples(); drawWaveform(); updateEditButtons(); }
         return;
     }
@@ -1779,6 +1869,7 @@ document.addEventListener('keydown', (e) => {
     case 'i':
       e.preventDefault();
       if (!audioData) break;
+      commitGain();
       // Set anchor at cursor — begin building a selection
       selAnchor = cursorPos;
       selStart = cursorPos; selEnd = cursorPos;
@@ -1803,6 +1894,7 @@ document.addEventListener('keydown', (e) => {
       break;
     case 'Escape':
       e.preventDefault();
+      commitGain();
       selAnchor = null;
       if (audioData) { selStart = cursorPos; selEnd = cursorPos; drawWaveform(); updateEditButtons(); }
       break;
@@ -1870,7 +1962,7 @@ waveformCanvas = document.getElementById('waveform');
 waveCtx = waveformCanvas.getContext('2d');
 
 // Return focus to body after any control interaction so keyboard shortcuts keep working
-document.querySelectorAll('select, input[type="range"]').forEach(el => {
+document.querySelectorAll('select, input[type="range"], input[type="number"]').forEach(el => {
   el.addEventListener('change', () => el.blur());
 });
 document.querySelectorAll('button').forEach(el => {
