@@ -554,6 +554,9 @@ function clearRepeat() {
 }
 
 // ── COLORS ───────────────────────────────────────
+// Dynamic stylesheet for pseudo-elements (thumb, spinners) that can't be styled via JS
+let colorStyleEl = null;
+
 function applyColors() {
   const bg = document.getElementById('color-bg').value;
   const txt = document.getElementById('color-text').value;
@@ -566,13 +569,37 @@ function applyColors() {
   document.querySelectorAll('.btn, #control-col label, .crt-select').forEach(el => {
     el.style.color = txt; el.style.borderColor = txt + '88'; el.style.textShadow = `0 0 8px ${txt}55`;
   });
-  document.querySelectorAll('.crt-select option').forEach(el => el.style.color = txt);
+  document.querySelectorAll('.crt-select option').forEach(el => { el.style.color = txt; el.style.background = bg; });
   document.getElementById('crt').style.borderColor = txt + '33';
   document.getElementById('output-slider').style.background = txt + '55';
   document.querySelectorAll('.frame-line').forEach(el => {
     el.style.color = txt; el.style.textShadow = `0 0 8px ${txt}55`;
   });
   document.querySelector('.panel-divider').style.background = txt + '33';
+  // Separator spans
+  document.querySelectorAll('#control-col span[style*="background"]').forEach(el => {
+    el.style.background = txt + '33';
+  });
+  // Number input
+  const numInput = document.getElementById('repeat-val');
+  numInput.style.color = txt;
+  numInput.style.background = bg;
+  numInput.style.borderColor = txt + '88';
+  // Color input borders
+  document.querySelectorAll('input[type="color"]').forEach(el => {
+    el.style.borderColor = txt + '88';
+  });
+  // Dynamic stylesheet for pseudo-elements
+  if (!colorStyleEl) {
+    colorStyleEl = document.createElement('style');
+    document.head.appendChild(colorStyleEl);
+  }
+  colorStyleEl.textContent = `
+    #output-slider::-webkit-slider-thumb { background: ${txt} !important; }
+    #output-slider::-moz-range-thumb { background: ${txt} !important; }
+    #repeat-val { accent-color: ${txt}; color-scheme: dark; }
+    .crt-select { accent-color: ${txt}; }
+  `;
 }
 
 // ── CONTROLS ─────────────────────────────────────
@@ -715,6 +742,22 @@ document.querySelectorAll('button').forEach(el => {
 
 updateButtons();
 requestAnimationFrame(render);
+
+// ── MOBILE SCALING ───────────────────────────────
+function scaleCrt() {
+  const crt = document.getElementById('crt');
+  crt.style.transform = '';
+  crt.style.transformOrigin = 'top center';
+  const pad = 16;
+  const crtW = crt.scrollWidth;
+  const vpW = window.innerWidth;
+  if (crtW + pad * 2 > vpW) {
+    const s = (vpW - pad * 2) / crtW;
+    crt.style.transform = `scale(${s})`;
+  }
+}
+window.addEventListener('resize', scaleCrt);
+requestAnimationFrame(scaleCrt);
 
 </script>
 </body>

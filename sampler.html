@@ -50,6 +50,7 @@ body {
   text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
   white-space: pre;
   user-select: none;
+  touch-action: none;
 }
 
 #control-panel {
@@ -1256,6 +1257,8 @@ async function loadAudioFile(e) {
 
 // ── COLORS ─────────────────────────────────────────
 
+let colorStyleEl = null;
+
 function applyColors() {
   const bg = document.getElementById('color-bg').value;
   const txt = document.getElementById('color-text').value;
@@ -1268,7 +1271,7 @@ function applyColors() {
     el.style.borderColor = txt + '88';
     el.style.textShadow = `0 0 8px ${txt}55`;
   });
-  document.querySelectorAll('.crt-select option').forEach(el => el.style.color = txt);
+  document.querySelectorAll('.crt-select option').forEach(el => { el.style.color = txt; el.style.background = bg; });
   document.getElementById('crt').style.borderColor = txt + '33';
   document.getElementById('gain-slider').style.background = txt + '55';
   document.getElementById('output-slider').style.background = txt + '55';
@@ -1276,6 +1279,24 @@ function applyColors() {
     el.style.color = txt;
     el.style.textShadow = `0 0 8px ${txt}55`;
   });
+  // Separator spans
+  document.querySelectorAll('#control-panel span[style*="background"]').forEach(el => {
+    el.style.background = txt + '33';
+  });
+  // Color input borders
+  document.querySelectorAll('input[type="color"]').forEach(el => {
+    el.style.borderColor = txt + '88';
+  });
+  // Dynamic stylesheet for slider thumbs and select arrows
+  if (!colorStyleEl) {
+    colorStyleEl = document.createElement('style');
+    document.head.appendChild(colorStyleEl);
+  }
+  colorStyleEl.textContent = `
+    #gain-slider::-webkit-slider-thumb, #output-slider::-webkit-slider-thumb { background: ${txt} !important; }
+    #gain-slider::-moz-range-thumb, #output-slider::-moz-range-thumb { background: ${txt} !important; }
+    .crt-select { accent-color: ${txt}; }
+  `;
 }
 
 // ── KEYBOARD ───────────────────────────────────────
@@ -1421,25 +1442,25 @@ function getKbNoteOffset(e) {
   return null;
 }
 
-displayEl.addEventListener('mousedown', (e) => {
+// ── Shared pointer helpers for mouse + touch ──
+function handlePointerDown(clientX, clientY) {
   // Range bar handling
-  const frac = getBarFrac(e);
+  const frac = getBarFracXY(clientX, clientY);
   if (frac !== null) {
     const distIn = Math.abs(frac - sampleIn);
     const distOut = Math.abs(frac - sampleOut);
     trimDragging = distIn <= distOut ? 'in' : 'out';
     applyTrimDrag(frac);
-    e.preventDefault();
-    return;
+    return true;
   }
 
-  // Octave control click handling (row right after keyboard)
+  // Octave control click handling
   if (kbStartRow >= 0 && charWidth && displayLineHeight) {
     const rect = displayEl.getBoundingClientRect();
-    const y = e.clientY - rect.top;
+    const y = clientY - rect.top;
     const row = Math.floor(y / displayLineHeight);
     if (row === kbStartRow + 8) {
-      const x = e.clientX - rect.left;
+      const x = clientX - rect.left;
       const col = Math.floor(x / charWidth);
       const mid = Math.floor(W / 2) + 1;
       if (col < mid) {
@@ -1449,57 +1470,43 @@ displayEl.addEventListener('mousedown', (e) => {
         octXFlash = 6;
         if (octaveShift < 3) { stopAllNotes(); octaveShift++; }
       }
-      e.preventDefault();
-      return;
+      return true;
     }
   }
 
   // Keyboard click handling
-  const offset = getKbNoteOffset(e);
+  const offset = getKbNoteOffsetXY(clientX, clientY);
   if (offset !== null) {
     if (mouseNoteOffset !== null) noteOff(mouseNoteOffset);
     noteOn(offset);
     mouseNoteOffset = offset;
-    e.preventDefault();
+    return true;
   }
-});
+  return false;
+}
 
-displayEl.addEventListener('mousemove', (e) => {
-  if (trimDragging || mouseNoteOffset !== null) return;
-  const frac = getBarFrac(e);
-  if (frac !== null) { displayEl.style.cursor = 'col-resize'; return; }
-  // Check octave row
-  if (kbStartRow >= 0 && charWidth && displayLineHeight) {
-    const rect = displayEl.getBoundingClientRect();
-    const y = e.clientY - rect.top;
-    const row = Math.floor(y / displayLineHeight);
-    if (row === kbStartRow + 8) { displayEl.style.cursor = 'pointer'; return; }
-  }
-  const kbOff = getKbNoteOffset(e);
-  displayEl.style.cursor = kbOff !== null ? 'pointer' : '';
-});
-
-document.addEventListener('mousemove', (e) => {
+function handlePointerMove(clientX, clientY) {
   if (trimDragging && charWidth) {
     const rect = displayEl.getBoundingClientRect();
-    const x = e.clientX - rect.left;
+    const x = clientX - rect.left;
     const col = Math.floor(x / charWidth);
     const barCol = col - 4;
     const frac = barCol / (WAVE_W - 1);
     applyTrimDrag(frac);
-    e.preventDefault();
+    return true;
   } else if (mouseNoteOffset !== null) {
-    const offset = getKbNoteOffset(e);
+    const offset = getKbNoteOffsetXY(clientX, clientY);
     if (offset !== null && offset !== mouseNoteOffset) {
       noteOff(mouseNoteOffset);
       noteOn(offset);
       mouseNoteOffset = offset;
     }
-    e.preventDefault();
+    return true;
   }
-});
+  return false;
+}
 
-document.addEventListener('mouseup', () => {
+function handlePointerUp() {
   if (trimDragging) {
     trimDragging = null;
     displayEl.style.cursor = '';
@@ -1509,7 +1516,86 @@ document.addEventListener('mouseup', () => {
     mouseNoteOffset = null;
     displayEl.style.cursor = '';
   }
+}
+
+// XY versions of hit-test helpers (take clientX/clientY instead of event)
+function getBarFracXY(clientX, clientY) {
+  if (rangeBarRow < 0 || !charWidth || !displayLineHeight) return null;
+  const rect = displayEl.getBoundingClientRect();
+  const y = clientY - rect.top;
+  const row = Math.floor(y / displayLineHeight);
+  if (row !== rangeBarRow) return null;
+  const x = clientX - rect.left;
+  const col = Math.floor(x / charWidth);
+  const barCol = col - 4;
+  if (barCol < 0 || barCol >= WAVE_W) return null;
+  return barCol / (WAVE_W - 1);
+}
+
+function getKbNoteOffsetXY(clientX, clientY) {
+  if (kbStartRow < 0 || !charWidth || !displayLineHeight || !audioBuffer) return null;
+  const rect = displayEl.getBoundingClientRect();
+  const y = clientY - rect.top;
+  const x = clientX - rect.left;
+  const row = Math.floor(y / displayLineHeight);
+  const col = Math.floor(x / charWidth);
+  const kbRelRow = row - kbStartRow;
+  if (kbRelRow < 0 || kbRelRow > 7) return null;
+  const kbColOffset = 1 + Math.floor((W - 47) / 2);
+  const kbCol = col - kbColOffset;
+  if (kbCol < 0 || kbCol >= 47) return null;
+  if (kbRelRow <= 4) {
+    for (let bi = 0; bi < 7; bi++) {
+      const p = BLACK_POS[bi];
+      if (kbCol >= p && kbCol <= p + 3) return BLACK_OFFSETS[bi];
+    }
+  }
+  if (kbCol >= 0 && kbCol <= 45) {
+    const whiteKeyIdx = Math.min(8, Math.floor(kbCol / 5));
+    return WHITE_OFFSETS[whiteKeyIdx];
+  }
+  return null;
+}
+
+// ── Mouse events ──
+displayEl.addEventListener('mousedown', (e) => {
+  if (handlePointerDown(e.clientX, e.clientY)) e.preventDefault();
 });
+
+displayEl.addEventListener('mousemove', (e) => {
+  if (trimDragging || mouseNoteOffset !== null) return;
+  const frac = getBarFracXY(e.clientX, e.clientY);
+  if (frac !== null) { displayEl.style.cursor = 'col-resize'; return; }
+  if (kbStartRow >= 0 && charWidth && displayLineHeight) {
+    const rect = displayEl.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const row = Math.floor(y / displayLineHeight);
+    if (row === kbStartRow + 8) { displayEl.style.cursor = 'pointer'; return; }
+  }
+  const kbOff = getKbNoteOffsetXY(e.clientX, e.clientY);
+  displayEl.style.cursor = kbOff !== null ? 'pointer' : '';
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (handlePointerMove(e.clientX, e.clientY)) e.preventDefault();
+});
+
+document.addEventListener('mouseup', handlePointerUp);
+
+// ── Touch events ──
+displayEl.addEventListener('touchstart', (e) => {
+  const t = e.touches[0];
+  if (handlePointerDown(t.clientX, t.clientY)) e.preventDefault();
+}, { passive: false });
+
+document.addEventListener('touchmove', (e) => {
+  if (e.touches.length > 0) {
+    const t = e.touches[0];
+    if (handlePointerMove(t.clientX, t.clientY)) e.preventDefault();
+  }
+}, { passive: false });
+
+document.addEventListener('touchend', handlePointerUp);
 
 // ── INIT ───────────────────────────────────────────
 
@@ -1522,6 +1608,22 @@ document.querySelectorAll('select, input[type="range"]').forEach(el => {
 });
 
 requestAnimationFrame(render);
+
+// ── MOBILE SCALING ───────────────────────────────
+function scaleCrt() {
+  const crt = document.getElementById('crt');
+  crt.style.transform = '';
+  crt.style.transformOrigin = 'top center';
+  const pad = 16;
+  const crtW = crt.scrollWidth;
+  const vpW = window.innerWidth;
+  if (crtW + pad * 2 > vpW) {
+    const s = (vpW - pad * 2) / crtW;
+    crt.style.transform = `scale(${s})`;
+  }
+}
+window.addEventListener('resize', scaleCrt);
+requestAnimationFrame(scaleCrt);
 
 </script>
 </body>
