@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BB MIDI MONITOR v1.0</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0a0800;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+#crt {
+  position: relative;
+  background: #0c0a02;
+  border: 1px solid #333333;
+  padding: 28px 36px;
+  display: flex;
+  flex-direction: column;
+  width: min-content;
+}
+
+#crt::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px);
+  pointer-events: none;
+  z-index: 10;
+}
+
+#display {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  white-space: pre;
+  user-select: none;
+}
+
+.frame-line {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  white-space: pre;
+  user-select: none;
+}
+
+#control-panel {
+  padding: 10px 16px;
+  position: relative;
+  z-index: 20;
+  align-self: stretch;
+  overflow: hidden;
+}
+
+.panel-border {
+  position: absolute;
+  top: 0; bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+  margin: 0; padding: 0;
+}
+.panel-border-left { left: 0; }
+.panel-border-right { right: 0; }
+
+#control-panel .panel-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+#control-panel .panel-row + .panel-row { margin-top: 8px; }
+
+.btn {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 12px;
+  background: transparent;
+  color: #FFFFFF;
+  border: 1px solid #555555;
+  padding: 6px 12px;
+  cursor: pointer;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  transition: background 0.15s, border-color 0.15s;
+  letter-spacing: 1px;
+}
+.btn:hover { background: rgba(255,255,255,0.08); border-color: #FFFFFF; }
+.btn:disabled { color: #333333; border-color: #222222; cursor: default; text-shadow: none; }
+.btn:disabled:hover { background: transparent; }
+
+.btn.filter-active {
+  color: #00FF60;
+  border-color: #00FF60;
+  text-shadow: 0 0 12px rgba(0, 255, 96, 0.5);
+  background: rgba(0, 255, 96, 0.08);
+}
+
+.btn.pause-active {
+  color: #FFB000;
+  border-color: #FFB000;
+  text-shadow: 0 0 12px rgba(255, 176, 0, 0.5);
+  background: rgba(255, 176, 0, 0.08);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+#control-panel label {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 11px;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  letter-spacing: 1px;
+}
+
+.crt-select {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 11px;
+  background: #0c0a02;
+  color: #FFFFFF;
+  border: 1px solid #555555;
+  padding: 5px 6px;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  cursor: pointer;
+  outline: none;
+}
+.crt-select:hover { border-color: #FFFFFF; }
+.crt-select option { background: #0c0a02; color: #FFFFFF; }
+
+#midi-select { max-width: 300px; }
+
+#control-panel input[type="color"] {
+  width: 32px; height: 24px; border: 1px solid #555555; background: transparent; cursor: pointer; padding: 0;
+}
+
+.sep {
+  display: inline-block; width: 1px; height: 20px; background: #555; margin: 0 4px; vertical-align: middle;
+}
+
+@keyframes pulse { 50% { opacity: 0.6; } }
+@keyframes flicker { 0%, 100% { opacity: 1; } 93% { opacity: 0.92; } 94% { opacity: 1; } }
+#crt { animation: flicker 8s infinite; }
+</style>
+</head>
+<body>
+<div id="crt">
+  <pre id="display"></pre>
+  <pre id="frame-mid" class="frame-line"></pre>
+  <div id="control-panel">
+    <pre id="border-left" class="frame-line panel-border panel-border-left"></pre>
+    <pre id="border-right" class="frame-line panel-border panel-border-right"></pre>
+
+    <div class="panel-row">
+      <label>INPUT:</label>
+      <select id="midi-select" class="crt-select" onchange="switchInput()">
+        <option value="">── NO DEVICES ──</option>
+      </select>
+      <button class="btn" onclick="requestMidi()" style="padding:4px 8px;font-size:11px;">⟳ DETECT</button>
+    </div>
+
+    <div class="panel-row">
+      <button class="btn" id="f-note" onclick="toggleFilter('note')">NOTE</button>
+      <button class="btn" id="f-cc" onclick="toggleFilter('cc')">CC</button>
+      <button class="btn" id="f-bend" onclick="toggleFilter('bend')">BEND</button>
+      <button class="btn" id="f-prog" onclick="toggleFilter('prog')">PROG</button>
+      <button class="btn" id="f-at" onclick="toggleFilter('at')">AT</button>
+      <button class="btn" id="f-clk" onclick="toggleFilter('clk')">CLK</button>
+      <button class="btn" id="f-sys" onclick="toggleFilter('sys')">SYS</button>
+      <span class="sep"></span>
+      <button class="btn" id="btn-pause" onclick="togglePause()">‖ PAUSE</button>
+      <button class="btn" onclick="clearLog()">✕ CLEAR</button>
+    </div>
+
+    <div class="panel-row">
+      <label>BG:</label>
+      <input type="color" id="color-bg" value="#0c0a02" onchange="applyColors()">
+      <label>TEXT:</label>
+      <input type="color" id="color-text" value="#FFFFFF" onchange="applyColors()">
+    </div>
+  </div>
+  <pre id="frame-bot" class="frame-line"></pre>
+</div>
+
+<script>
+
+// ── CONSTANTS ─────────────────────────────────────
+const W = 76;
+const LOG_LINES = 14;
+const BAR_W = 16;
+const MAX_MESSAGES = 500;
+
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+const CC_NAMES = {
+  0:'Bank', 1:'Mod', 2:'Breath', 4:'Foot', 5:'Porta', 7:'Vol',
+  8:'Bal', 10:'Pan', 11:'Expr', 64:'Sust', 65:'Porta', 66:'Sosten',
+  67:'Soft', 68:'Legato', 71:'Reso', 72:'Rel', 73:'Atk', 74:'Cutoff',
+  75:'Decay', 76:'VibRt', 77:'VibDp', 78:'VibDl', 91:'Reverb',
+  93:'Chorus', 120:'AllOff', 121:'Reset', 123:'NotOff'
+};
+
+// ── STATE ─────────────────────────────────────────
+let midiAccess = null;
+let currentInputIds = [];
+let selectedInputId = 'all';
+let inputs = [];
+
+let messages = [];
+let paused = false;
+let startTime = 0;
+let msgCount = 0;
+let msgTimestamps = [];
+
+let channelActivity = new Array(16).fill(0);
+let clockTimes = [];
+let bpm = 0;
+let transportState = '';
+
+let filters = {
+  note: true, cc: true, bend: true, prog: true,
+  at: true, clk: true, sys: false
+};
+
+let tick = 0;
+let errorMsg = '';
+let midiSupported = true;
+
+// ── DISPLAY HELPERS ───────────────────────────────
+function pad(s) { return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║'; }
+function center(s) { const l = Math.floor((W - s.length) / 2); return '║' + ' '.repeat(l) + s + ' '.repeat(W - s.length - l) + '║'; }
+function hBar(ch) { return '╠' + ch.repeat(W) + '╣'; }
+
+function fmtTime(ms) {
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  const cs = Math.floor((ms % 1000) / 10);
+  return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0') + '.' + String(cs).padStart(2,'0');
+}
+
+function noteName(midi) {
+  return NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
+}
+
+function valueBar(val, max, width) {
+  const filled = Math.round((val / max) * width);
+  return '█'.repeat(filled) + '░'.repeat(width - filled);
+}
+
+function activityChar(level) {
+  if (level > 0.7) return '█';
+  if (level > 0.4) return '▓';
+  if (level > 0.15) return '▒';
+  if (level > 0.02) return '░';
+  return '·';
+}
+
+function getMsgRate() {
+  const now = performance.now();
+  msgTimestamps = msgTimestamps.filter(t => now - t < 1000);
+  return msgTimestamps.length;
+}
+
+// ── MESSAGE FORMATTING ───────────────────────────
+function formatMsg(msg) {
+  const t = fmtTime(msg.time);
+  const ch = msg.ch !== null ? String(msg.ch).padStart(2) : '--';
+  let rest = '';
+
+  switch (msg.type) {
+    case 'NOTE_ON':
+      rest = 'NOTE ON    ' + noteName(msg.d1).padEnd(5) + String(msg.d2).padStart(3) + '  ' + valueBar(msg.d2, 127, BAR_W);
+      break;
+    case 'NOTE_OFF':
+      rest = 'NOTE OFF   ' + noteName(msg.d1).padEnd(5) + String(msg.d2).padStart(3);
+      break;
+    case 'CC': {
+      const name = CC_NAMES[msg.d1] || '';
+      rest = 'CC ' + String(msg.d1).padStart(3,'0') + '    ' + name.slice(0,6).padEnd(6) + String(msg.d2).padStart(3) + '  ' + valueBar(msg.d2, 127, BAR_W);
+      break;
+    }
+    case 'BEND': {
+      const sign = msg.bendVal >= 0 ? '+' : '';
+      rest = 'BEND       ' + (sign + msg.bendVal).padStart(6);
+      break;
+    }
+    case 'PROG':
+      rest = 'PROG       ' + String(msg.d1).padStart(3);
+      break;
+    case 'CH_PRESS':
+      rest = 'CH PRESS   ' + String(msg.d1).padStart(3) + '        ' + valueBar(msg.d1, 127, BAR_W);
+      break;
+    case 'KEY_PRESS':
+      rest = 'KEY PRESS  ' + noteName(msg.d1).padEnd(5) + String(msg.d2).padStart(3) + '  ' + valueBar(msg.d2, 127, BAR_W);
+      break;
+    case 'START':
+      rest = '► START';
+      break;
+    case 'STOP':
+      rest = '■ STOP';
+      break;
+    case 'CONTINUE':
+      rest = '► CONTINUE';
+      break;
+    case 'SYSEX':
+      rest = 'SYSEX      ' + msg.byteCount + ' bytes';
+      break;
+    case 'MTC':
+      rest = 'MTC QF     ' + String(msg.d1).padStart(3);
+      break;
+    case 'SPP':
+      rest = 'SONG POS   ' + String(msg.d1).padStart(5);
+      break;
+    case 'SONG_SEL':
+      rest = 'SONG SEL   ' + String(msg.d1).padStart(3);
+      break;
+    default:
+      rest = msg.type;
+  }
+
+  return '  ' + t + '  ' + ch + '  ' + rest;
+}
+
+// ── FILTER ────────────────────────────────────────
+function passesFilter(msg) {
+  switch (msg.type) {
+    case 'NOTE_ON': case 'NOTE_OFF': return filters.note;
+    case 'CC': return filters.cc;
+    case 'BEND': return filters.bend;
+    case 'PROG': return filters.prog;
+    case 'CH_PRESS': case 'KEY_PRESS': return filters.at;
+    case 'START': case 'STOP': case 'CONTINUE': return filters.clk;
+    case 'SYSEX': case 'MTC': case 'SPP': case 'SONG_SEL': return filters.sys;
+    default: return true;
+  }
+}
+
+function getFilteredMessages() {
+  return messages.filter(passesFilter);
+}
+
+// ── RENDER ────────────────────────────────────────
+function render() {
+  tick++;
+
+  // Decay channel activity
+  for (let i = 0; i < 16; i++) channelActivity[i] *= 0.93;
+
+  // Decay BPM if no clock for a while
+  if (clockTimes.length > 0) {
+    const lastClock = clockTimes[clockTimes.length - 1];
+    if (performance.now() - lastClock > 2000) {
+      bpm = 0;
+      clockTimes = [];
+      transportState = '';
+    }
+  }
+
+  const rate = getMsgRate();
+
+  // ── Status ──
+  let statusTxt;
+  if (!midiSupported) statusTxt = 'NO MIDI API';
+  else if (inputs.length === 0) statusTxt = 'NO DEVICES';
+  else if (paused) statusTxt = '‖ PAUSED';
+  else statusTxt = '● LISTENING';
+
+  // ── Input name ──
+  let inputName = 'NONE';
+  if (selectedInputId === 'all' && inputs.length > 0) {
+    inputName = 'ALL (' + inputs.length + ')';
+  } else {
+    const inp = inputs.find(i => i.id === selectedInputId);
+    if (inp) inputName = inp.name;
+  }
+  const truncInput = inputName.length > 28 ? inputName.slice(0,25) + '...' : inputName;
+
+  // ── BPM / Transport ──
+  const bpmStr = bpm > 0 ? bpm.toFixed(1) : '---.-';
+  let transportStr = '';
+  if (transportState === 'PLAY') transportStr = '► PLAY';
+  else if (transportState === 'STOP') transportStr = '■ STOP';
+
+  // ── Build display ──
+  const lines = [];
+  lines.push('╔' + '═'.repeat(W) + '╗');
+  lines.push(pad(''));
+  lines.push(center('B B  M I D I  M O N I T O R  v1.0'));
+  lines.push(pad(''));
+  lines.push(hBar('═'));
+  lines.push(pad(''));
+
+  // Info lines
+  const rateStr = rate > 0 ? String(rate).padStart(4) + '/s' : '   0/s';
+  lines.push(pad('  INPUT:  ' + truncInput.padEnd(30) + 'MSGS: ' + String(msgCount).padStart(6) + '  ' + rateStr));
+
+  const statusPad = statusTxt.padEnd(18);
+  const bpmPad = ('BPM: ' + bpmStr).padEnd(14);
+  lines.push(pad('  STATUS: ' + statusPad + bpmPad + transportStr));
+
+  if (errorMsg) {
+    lines.push(pad('  ' + errorMsg));
+  }
+
+  lines.push(pad(''));
+
+  // Channel activity
+  let chHeader = '  CH ';
+  let chBars   = '     ';
+  for (let i = 0; i < 16; i++) {
+    chHeader += String(i + 1).padStart(3);
+    chBars += ('  ' + activityChar(channelActivity[i]));
+  }
+  lines.push(pad(chHeader));
+  lines.push(pad(chBars));
+
+  lines.push(pad(''));
+  lines.push(hBar('═'));
+  lines.push(pad(''));
+
+  // Message log
+  if (!midiSupported) {
+    lines.push(center('Web MIDI API is not supported in this browser.'));
+    lines.push(center('Please use Chrome, Edge, or Opera.'));
+    for (let i = 0; i < LOG_LINES - 2; i++) lines.push(pad(''));
+  } else if (messages.length === 0) {
+    const emptyBefore = Math.floor((LOG_LINES - 2) / 2);
+    for (let i = 0; i < emptyBefore; i++) lines.push(pad(''));
+    lines.push(center('NO MIDI DATA'));
+    lines.push(center(inputs.length === 0 ? 'Press ⟳ DETECT to scan for devices' : 'Waiting for input...'));
+    const emptyAfter = LOG_LINES - 2 - emptyBefore;
+    for (let i = 0; i < emptyAfter; i++) lines.push(pad(''));
+  } else {
+    const filtered = getFilteredMessages();
+    const start = Math.max(0, filtered.length - LOG_LINES);
+    const display = filtered.slice(start);
+
+    // Pad top if fewer messages than LOG_LINES
+    for (let i = 0; i < LOG_LINES - display.length; i++) lines.push(pad(''));
+
+    for (let i = 0; i < display.length; i++) {
+      const formatted = formatMsg(display[i]);
+      // Truncate to W chars
+      const truncated = formatted.length > W ? formatted.slice(0, W) : formatted;
+      lines.push(pad(truncated));
+    }
+  }
+
+  lines.push(pad(''));
+
+  document.getElementById('display').textContent = lines.join('\n');
+  document.getElementById('frame-mid').textContent = hBar('═');
+  document.getElementById('frame-bot').textContent = '╚' + '═'.repeat(W) + '╝';
+
+  // Side borders
+  const panel = document.getElementById('control-panel');
+  const lineH = 21.75;
+  const numLines = Math.ceil(panel.clientHeight / lineH) + 1;
+  const borderCol = new Array(numLines).fill('║').join('\n');
+  document.getElementById('border-left').textContent = borderCol;
+  document.getElementById('border-right').textContent = borderCol;
+
+  requestAnimationFrame(render);
+}
+
+// ── MIDI SETUP ────────────────────────────────────
+async function requestMidi() {
+  if (!navigator.requestMIDIAccess) {
+    midiSupported = false;
+    errorMsg = '?ERR: WEB MIDI NOT SUPPORTED';
+    return;
+  }
+
+  try {
+    midiAccess = await navigator.requestMIDIAccess({ sysex: false });
+    midiAccess.onstatechange = onStateChange;
+    populateInputs();
+    connectInputs();
+    startTime = performance.now();
+    errorMsg = '';
+  } catch (e) {
+    errorMsg = '?ERR: MIDI ACCESS DENIED';
+  }
+}
+
+function onStateChange(e) {
+  populateInputs();
+  connectInputs();
+}
+
+function populateInputs() {
+  if (!midiAccess) return;
+  inputs = [];
+  for (const input of midiAccess.inputs.values()) {
+    if (input.state === 'connected') {
+      inputs.push({ id: input.id, name: input.name || 'UNKNOWN' });
+    }
+  }
+
+  const sel = document.getElementById('midi-select');
+  sel.innerHTML = '';
+
+  if (inputs.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = '── NO DEVICES ──';
+    sel.appendChild(opt);
+    selectedInputId = '';
+    return;
+  }
+
+  // ALL option
+  const allOpt = document.createElement('option');
+  allOpt.value = 'all';
+  allOpt.textContent = 'ALL INPUTS (' + inputs.length + ')';
+  sel.appendChild(allOpt);
+
+  inputs.forEach(inp => {
+    const opt = document.createElement('option');
+    opt.value = inp.id;
+    const truncName = inp.name.length > 40 ? inp.name.slice(0, 37) + '...' : inp.name;
+    opt.textContent = truncName;
+    sel.appendChild(opt);
+  });
+
+  // Restore selection or default to ALL
+  if (selectedInputId && (selectedInputId === 'all' || inputs.find(i => i.id === selectedInputId))) {
+    sel.value = selectedInputId;
+  } else {
+    selectedInputId = 'all';
+    sel.value = 'all';
+  }
+}
+
+function switchInput() {
+  selectedInputId = document.getElementById('midi-select').value;
+  connectInputs();
+}
+
+function connectInputs() {
+  if (!midiAccess) return;
+
+  // Disconnect all first
+  for (const input of midiAccess.inputs.values()) {
+    input.onmidimessage = null;
+  }
+  currentInputIds = [];
+
+  if (!selectedInputId) return;
+
+  for (const input of midiAccess.inputs.values()) {
+    if (input.state !== 'connected') continue;
+    if (selectedInputId === 'all' || input.id === selectedInputId) {
+      input.onmidimessage = onMidiMessage;
+      currentInputIds.push(input.id);
+    }
+  }
+}
+
+// ── MIDI MESSAGE HANDLER ──────────────────────────
+function onMidiMessage(e) {
+  const data = e.data;
+  if (!data || data.length === 0) return;
+
+  const status = data[0];
+  const now = performance.now();
+
+  msgTimestamps.push(now);
+  msgCount++;
+
+  // Skip Active Sensing and Timing Clock display
+  if (status === 0xFE) return; // Active Sensing — always skip
+  if (status === 0xFF) return; // System Reset — rare, skip
+
+  // Clock tick — track for BPM but don't log
+  if (status === 0xF8) {
+    handleClock(now);
+    return;
+  }
+
+  if (paused) return; // still count messages but don't log when paused
+
+  const time = now - startTime;
+
+  // System messages
+  if (status >= 0xF0) {
+    switch (status) {
+      case 0xFA:
+        transportState = 'PLAY';
+        addMessage({ time, type: 'START', ch: null });
+        return;
+      case 0xFB:
+        transportState = 'PLAY';
+        addMessage({ time, type: 'CONTINUE', ch: null });
+        return;
+      case 0xFC:
+        transportState = 'STOP';
+        addMessage({ time, type: 'STOP', ch: null });
+        return;
+      case 0xF0:
+        addMessage({ time, type: 'SYSEX', ch: null, byteCount: data.length });
+        return;
+      case 0xF1:
+        addMessage({ time, type: 'MTC', ch: null, d1: data[1] || 0 });
+        return;
+      case 0xF2: {
+        const pos = data.length >= 3 ? ((data[2] << 7) | data[1]) : 0;
+        addMessage({ time, type: 'SPP', ch: null, d1: pos });
+        return;
+      }
+      case 0xF3:
+        addMessage({ time, type: 'SONG_SEL', ch: null, d1: data[1] || 0 });
+        return;
+      default:
+        return;
+    }
+  }
+
+  // Channel messages
+  const type = status & 0xF0;
+  const ch = (status & 0x0F) + 1;
+
+  channelActivity[ch - 1] = 1.0;
+
+  switch (type) {
+    case 0x80:
+      addMessage({ time, type: 'NOTE_OFF', ch, d1: data[1], d2: data[2] });
+      break;
+    case 0x90:
+      if (data[2] === 0) {
+        addMessage({ time, type: 'NOTE_OFF', ch, d1: data[1], d2: 0 });
+      } else {
+        addMessage({ time, type: 'NOTE_ON', ch, d1: data[1], d2: data[2] });
+      }
+      break;
+    case 0xA0:
+      addMessage({ time, type: 'KEY_PRESS', ch, d1: data[1], d2: data[2] });
+      break;
+    case 0xB0:
+      addMessage({ time, type: 'CC', ch, d1: data[1], d2: data[2] });
+      break;
+    case 0xC0:
+      addMessage({ time, type: 'PROG', ch, d1: data[1] });
+      break;
+    case 0xD0:
+      addMessage({ time, type: 'CH_PRESS', ch, d1: data[1] });
+      break;
+    case 0xE0: {
+      const bendVal = ((data[2] << 7) | data[1]) - 8192;
+      addMessage({ time, type: 'BEND', ch, d1: data[1], d2: data[2], bendVal });
+      break;
+    }
+  }
+}
+
+function addMessage(msg) {
+  messages.push(msg);
+  if (messages.length > MAX_MESSAGES) messages = messages.slice(-MAX_MESSAGES);
+}
+
+// ── BPM CALCULATION ──────────────────────────────
+function handleClock(now) {
+  clockTimes.push(now);
+  if (clockTimes.length > 48) clockTimes = clockTimes.slice(-48);
+
+  if (clockTimes.length >= 6) {
+    const recent = clockTimes.slice(-24);
+    const totalTime = recent[recent.length - 1] - recent[0];
+    const avgTickMs = totalTime / (recent.length - 1);
+    bpm = 60000 / (avgTickMs * 24);
+  }
+}
+
+// ── CONTROLS ──────────────────────────────────────
+function toggleFilter(name) {
+  filters[name] = !filters[name];
+  updateFilterButtons();
+}
+
+function updateFilterButtons() {
+  for (const key of Object.keys(filters)) {
+    const btn = document.getElementById('f-' + key);
+    if (btn) btn.classList.toggle('filter-active', filters[key]);
+  }
+}
+
+function togglePause() {
+  paused = !paused;
+  const btn = document.getElementById('btn-pause');
+  btn.classList.toggle('pause-active', paused);
+  btn.textContent = paused ? '► RESUME' : '‖ PAUSE';
+}
+
+function clearLog() {
+  messages = [];
+  msgCount = 0;
+  msgTimestamps = [];
+  startTime = performance.now();
+  bpm = 0;
+  clockTimes = [];
+  transportState = '';
+  for (let i = 0; i < 16; i++) channelActivity[i] = 0;
+}
+
+// ── COLORS ────────────────────────────────────────
+let colorStyleEl = null;
+
+function applyColors() {
+  const bg = document.getElementById('color-bg').value;
+  const txt = document.getElementById('color-text').value;
+  document.body.style.background = bg;
+  document.getElementById('crt').style.background = bg;
+  document.getElementById('display').style.color = txt;
+  document.getElementById('display').style.textShadow = `0 0 8px ${txt}55`;
+  document.querySelectorAll('.btn, #control-panel label, .crt-select').forEach(el => {
+    el.style.color = txt;
+    el.style.borderColor = txt + '88';
+    el.style.textShadow = `0 0 8px ${txt}55`;
+  });
+  document.querySelectorAll('.crt-select option').forEach(el => { el.style.color = txt; el.style.background = bg; });
+  document.getElementById('crt').style.borderColor = txt + '33';
+  document.querySelectorAll('.frame-line').forEach(el => {
+    el.style.color = txt;
+    el.style.textShadow = `0 0 8px ${txt}55`;
+  });
+  document.querySelectorAll('.sep').forEach(el => { el.style.background = txt + '55'; });
+  document.querySelectorAll('input[type="color"]').forEach(el => { el.style.borderColor = txt + '88'; });
+  if (!colorStyleEl) {
+    colorStyleEl = document.createElement('style');
+    document.head.appendChild(colorStyleEl);
+  }
+  colorStyleEl.textContent = `.crt-select { accent-color: ${txt}; }`;
+  // Re-apply filter button colors
+  updateFilterButtons();
+}
+
+// ── KEYBOARD SHORTCUTS ────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+
+  switch (e.key.toLowerCase()) {
+    case ' ':
+      e.preventDefault();
+      togglePause();
+      break;
+    case 'c':
+      e.preventDefault();
+      clearLog();
+      break;
+    case '1': e.preventDefault(); toggleFilter('note'); break;
+    case '2': e.preventDefault(); toggleFilter('cc'); break;
+    case '3': e.preventDefault(); toggleFilter('bend'); break;
+    case '4': e.preventDefault(); toggleFilter('prog'); break;
+    case '5': e.preventDefault(); toggleFilter('at'); break;
+    case '6': e.preventDefault(); toggleFilter('clk'); break;
+    case '7': e.preventDefault(); toggleFilter('sys'); break;
+  }
+});
+
+// Blur controls after use
+document.querySelectorAll('select').forEach(el => {
+  el.addEventListener('change', () => el.blur());
+});
+
+// ── INIT ──────────────────────────────────────────
+if (!navigator.requestMIDIAccess) {
+  midiSupported = false;
+  errorMsg = '?ERR: WEB MIDI NOT SUPPORTED';
+}
+
+updateFilterButtons();
+requestAnimationFrame(render);
+
+// Auto-request MIDI on load
+requestMidi();
+
+// ── MOBILE SCALING ───────────────────────────────
+function scaleCrt() {
+  const crt = document.getElementById('crt');
+  crt.style.transform = '';
+  crt.style.transformOrigin = 'top center';
+  const p = 16;
+  const crtW = crt.scrollWidth;
+  const vpW = window.innerWidth;
+  if (crtW + p * 2 > vpW) {
+    crt.style.transform = `scale(${(vpW - p * 2) / crtW})`;
+  }
+}
+window.addEventListener('resize', scaleCrt);
+requestAnimationFrame(scaleCrt);
+
+</script>
+</body>
+</html>
