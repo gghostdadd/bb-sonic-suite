@@ -113,6 +113,13 @@ body {
   animation: pulse 1s ease-in-out infinite;
 }
 
+.btn.log-active {
+  color: #00BFFF;
+  border-color: #00BFFF;
+  text-shadow: 0 0 12px rgba(0, 191, 255, 0.5);
+  background: rgba(0, 191, 255, 0.08);
+}
+
 #control-panel label {
   font-family: 'Menlo','Consolas','Courier New', monospace;
   font-size: 11px;
@@ -174,7 +181,10 @@ body {
       <button class="btn" id="f-at" onclick="toggleFilter('at')">AT</button>
       <button class="btn" id="f-clk" onclick="toggleFilter('clk')">CLK</button>
       <button class="btn" id="f-sys" onclick="toggleFilter('sys')">SYS</button>
-      <span class="sep"></span>
+    </div>
+
+    <div class="panel-row">
+      <button class="btn" id="btn-log" onclick="toggleLog()">▼ LOG</button>
       <button class="btn" id="btn-pause" onclick="togglePause()">‖ PAUSE</button>
       <button class="btn" onclick="clearLog()">✕ CLEAR</button>
     </div>
@@ -192,9 +202,12 @@ body {
 <script>
 
 // ── CONSTANTS ─────────────────────────────────────
-const W = 76;
-const LOG_LINES = 14;
-const BAR_W = 16;
+const W = 66;
+const LOG_LINES = 10;
+const BAR_W = 12;
+const CC_BAR_W = 24;
+const STAFF_W = 30;
+const STAFF_CENTER = 15;
 const MAX_MESSAGES = 500;
 
 const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -206,6 +219,13 @@ const CC_NAMES = {
   75:'Decay', 76:'VibRt', 77:'VibDp', 78:'VibDl', 91:'Reverb',
   93:'Chorus', 120:'AllOff', 121:'Reset', 123:'NotOff'
 };
+
+// Staff: positions 0 (C4) through 12 (A5) — 13 rows
+// Diatonic mapping: C=0 D=1 E=2 F=3 G=4 A=5 B=6
+const MIDI_TO_DIATONIC = [0,0,1,1,2,3,3,4,4,5,5,6];
+const MIDI_IS_SHARP    = [0,1,0,1,0,0,1,0,1,0,1,0];
+const STAFF_LINE_POS   = new Set([2, 4, 6, 8, 10]); // E4 G4 B4 D5 F5
+const POS_LABELS = ['C4','D4','E4','F4','G4','A4','B4','C5','D5','E5','F5','G5','A5'];
 
 // ── STATE ─────────────────────────────────────────
 let midiAccess = null;
@@ -224,6 +244,10 @@ let clockTimes = [];
 let bpm = 0;
 let transportState = '';
 
+let lastNote = null;   // { midi, vel, ch }
+let lastCC = null;     // { cc, val, ch }
+let logVisible = false;
+
 let filters = {
   note: true, cc: true, bend: true, prog: true,
   at: true, clk: true, sys: false
@@ -232,9 +256,10 @@ let filters = {
 let tick = 0;
 let errorMsg = '';
 let midiSupported = true;
+let noteFlash = 0; // countdown for note head flash
 
 // ── DISPLAY HELPERS ───────────────────────────────
-function pad(s) { return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║'; }
+function lpad(s) { return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║'; }
 function center(s) { const l = Math.floor((W - s.length) / 2); return '║' + ' '.repeat(l) + s + ' '.repeat(W - s.length - l) + '║'; }
 function hBar(ch) { return '╠' + ch.repeat(W) + '╣'; }
 
@@ -246,7 +271,7 @@ function fmtTime(ms) {
   return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0') + '.' + String(cs).padStart(2,'0');
 }
 
-function noteName(midi) {
+function midiNoteName(midi) {
   return NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
 }
 
@@ -269,6 +294,96 @@ function getMsgRate() {
   return msgTimestamps.length;
 }
 
+// ── STAFF RENDERING ───────────────────────────────
+function midiToStaffPos(midi) {
+  const noteInOctave = midi % 12;
+  const octave = Math.floor(midi / 12) - 1;
+  return (octave - 4) * 7 + MIDI_TO_DIATONIC[noteInOctave];
+}
+
+function renderStaff(lines) {
+  let noteStaffPos = null;
+  let sharp = false;
+  let outOfRange = '';
+
+  if (lastNote) {
+    const rawPos = midiToStaffPos(lastNote.midi);
+    sharp = MIDI_IS_SHARP[lastNote.midi % 12] === 1;
+    if (rawPos < 2) { noteStaffPos = 2; outOfRange = '↓'; }
+    else if (rawPos > 10) { noteStaffPos = 10; outOfRange = '↑'; }
+    else { noteStaffPos = rawPos; }
+  }
+
+  const noteStr = lastNote ? midiNoteName(lastNote.midi) + (outOfRange ? ' ' + outOfRange : '') : '--';
+  const velStr = lastNote ? String(lastNote.vel) : '---';
+  const chStr = lastNote ? String(lastNote.ch) : '--';
+
+  // Map position → row (0-4) and on-line vs in-space
+  let noteRow = null;
+  let onLine = false;
+  if (noteStaffPos !== null) {
+    onLine = noteStaffPos % 2 === 0;
+    noteRow = onLine ? (10 - noteStaffPos) / 2 : (11 - noteStaffPos) / 2;
+  }
+
+  // 5 rows — one per staff line, F5 (top) to E4 (bottom)
+  // ● = note on a line, ○ = note in the space just above this line
+  for (let row = 0; row < 5; row++) {
+    const hasNote = noteRow === row;
+    const arr = new Array(STAFF_W);
+    for (let i = 0; i < STAFF_W; i++) arr[i] = '─';
+    if (hasNote) {
+      const flash = noteFlash > 0 && noteFlash % 4 < 2;
+      arr[STAFF_CENTER] = onLine ? (flash ? '◉' : '●') : (flash ? '◎' : '○');
+      if (sharp) arr[STAFF_CENTER - 1] = '♯';
+    }
+
+    let info = '';
+    if (row === 0) info = 'NOTE: ' + noteStr;
+    if (row === 2) info = 'VEL:  ' + velStr;
+    if (row === 4) info = 'CH:   ' + chStr;
+
+    const left = '    ' + arr.join('');
+    if (info) {
+      const full = left + ' '.repeat(Math.max(1, W - left.length - info.length - 2)) + info;
+      lines.push(lpad(full.length > W ? full.slice(0, W) : full));
+    } else {
+      lines.push(lpad(left));
+    }
+  }
+}
+
+// ── CC / VEL BARS ─────────────────────────────────
+function renderBars(lines) {
+  // CC bar
+  if (lastCC) {
+    const ccName = CC_NAMES[lastCC.cc] || '';
+    const label = 'CC ' + String(lastCC.cc).padStart(3,'0') + ' ' + ccName.slice(0,6).padEnd(6);
+    const bar = valueBar(lastCC.val, 127, CC_BAR_W);
+    const valStr = String(lastCC.val).padStart(3);
+    const chStr = 'ch ' + String(lastCC.ch).padStart(2);
+    lines.push(lpad('  ' + label + ' ' + bar + ' ' + valStr + '  ' + chStr));
+  } else {
+    const emptyLabel = 'CC ---  ------';
+    const emptyBar = '░'.repeat(CC_BAR_W);
+    lines.push(lpad('  ' + emptyLabel + ' ' + emptyBar + ' ---'));
+  }
+
+  // Velocity bar
+  if (lastNote) {
+    const nName = midiNoteName(lastNote.midi).padEnd(5);
+    const label = 'VEL   ' + nName + '    ';
+    const bar = valueBar(lastNote.vel, 127, CC_BAR_W);
+    const valStr = String(lastNote.vel).padStart(3);
+    const chStr = 'ch ' + String(lastNote.ch).padStart(2);
+    lines.push(lpad('  ' + label + ' ' + bar + ' ' + valStr + '  ' + chStr));
+  } else {
+    const emptyLabel = 'VEL   --        ';
+    const emptyBar = '░'.repeat(CC_BAR_W);
+    lines.push(lpad('  ' + emptyLabel + ' ' + emptyBar + ' ---'));
+  }
+}
+
 // ── MESSAGE FORMATTING ───────────────────────────
 function formatMsg(msg) {
   const t = fmtTime(msg.time);
@@ -277,10 +392,10 @@ function formatMsg(msg) {
 
   switch (msg.type) {
     case 'NOTE_ON':
-      rest = 'NOTE ON    ' + noteName(msg.d1).padEnd(5) + String(msg.d2).padStart(3) + '  ' + valueBar(msg.d2, 127, BAR_W);
+      rest = 'NOTE ON    ' + midiNoteName(msg.d1).padEnd(5) + String(msg.d2).padStart(3) + '  ' + valueBar(msg.d2, 127, BAR_W);
       break;
     case 'NOTE_OFF':
-      rest = 'NOTE OFF   ' + noteName(msg.d1).padEnd(5) + String(msg.d2).padStart(3);
+      rest = 'NOTE OFF   ' + midiNoteName(msg.d1).padEnd(5) + String(msg.d2).padStart(3);
       break;
     case 'CC': {
       const name = CC_NAMES[msg.d1] || '';
@@ -299,31 +414,16 @@ function formatMsg(msg) {
       rest = 'CH PRESS   ' + String(msg.d1).padStart(3) + '        ' + valueBar(msg.d1, 127, BAR_W);
       break;
     case 'KEY_PRESS':
-      rest = 'KEY PRESS  ' + noteName(msg.d1).padEnd(5) + String(msg.d2).padStart(3) + '  ' + valueBar(msg.d2, 127, BAR_W);
+      rest = 'KEY PRESS  ' + midiNoteName(msg.d1).padEnd(5) + String(msg.d2).padStart(3) + '  ' + valueBar(msg.d2, 127, BAR_W);
       break;
-    case 'START':
-      rest = '► START';
-      break;
-    case 'STOP':
-      rest = '■ STOP';
-      break;
-    case 'CONTINUE':
-      rest = '► CONTINUE';
-      break;
-    case 'SYSEX':
-      rest = 'SYSEX      ' + msg.byteCount + ' bytes';
-      break;
-    case 'MTC':
-      rest = 'MTC QF     ' + String(msg.d1).padStart(3);
-      break;
-    case 'SPP':
-      rest = 'SONG POS   ' + String(msg.d1).padStart(5);
-      break;
-    case 'SONG_SEL':
-      rest = 'SONG SEL   ' + String(msg.d1).padStart(3);
-      break;
-    default:
-      rest = msg.type;
+    case 'START':     rest = '► START'; break;
+    case 'STOP':      rest = '■ STOP'; break;
+    case 'CONTINUE':  rest = '► CONTINUE'; break;
+    case 'SYSEX':     rest = 'SYSEX      ' + msg.byteCount + ' bytes'; break;
+    case 'MTC':       rest = 'MTC QF     ' + String(msg.d1).padStart(3); break;
+    case 'SPP':       rest = 'SONG POS   ' + String(msg.d1).padStart(5); break;
+    case 'SONG_SEL':  rest = 'SONG SEL   ' + String(msg.d1).padStart(3); break;
+    default:          rest = msg.type;
   }
 
   return '  ' + t + '  ' + ch + '  ' + rest;
@@ -343,47 +443,35 @@ function passesFilter(msg) {
   }
 }
 
-function getFilteredMessages() {
-  return messages.filter(passesFilter);
-}
-
 // ── RENDER ────────────────────────────────────────
 function render() {
   tick++;
+  if (noteFlash > 0) noteFlash--;
 
   // Decay channel activity
   for (let i = 0; i < 16; i++) channelActivity[i] *= 0.93;
 
   // Decay BPM if no clock for a while
-  if (clockTimes.length > 0) {
-    const lastClock = clockTimes[clockTimes.length - 1];
-    if (performance.now() - lastClock > 2000) {
-      bpm = 0;
-      clockTimes = [];
-      transportState = '';
-    }
+  if (clockTimes.length > 0 && performance.now() - clockTimes[clockTimes.length - 1] > 2000) {
+    bpm = 0; clockTimes = []; transportState = '';
   }
 
   const rate = getMsgRate();
 
-  // ── Status ──
+  // Status
   let statusTxt;
   if (!midiSupported) statusTxt = 'NO MIDI API';
   else if (inputs.length === 0) statusTxt = 'NO DEVICES';
   else if (paused) statusTxt = '‖ PAUSED';
   else statusTxt = '● LISTENING';
 
-  // ── Input name ──
+  // Input name
   let inputName = 'NONE';
-  if (selectedInputId === 'all' && inputs.length > 0) {
-    inputName = 'ALL (' + inputs.length + ')';
-  } else {
-    const inp = inputs.find(i => i.id === selectedInputId);
-    if (inp) inputName = inp.name;
-  }
-  const truncInput = inputName.length > 28 ? inputName.slice(0,25) + '...' : inputName;
+  if (selectedInputId === 'all' && inputs.length > 0) inputName = 'ALL (' + inputs.length + ')';
+  else { const inp = inputs.find(i => i.id === selectedInputId); if (inp) inputName = inp.name; }
+  const truncInput = inputName.length > 20 ? inputName.slice(0,17) + '...' : inputName;
 
-  // ── BPM / Transport ──
+  // BPM / Transport
   const bpmStr = bpm > 0 ? bpm.toFixed(1) : '---.-';
   let transportStr = '';
   if (transportState === 'PLAY') transportStr = '► PLAY';
@@ -391,26 +479,23 @@ function render() {
 
   // ── Build display ──
   const lines = [];
+
+  // Header
   lines.push('╔' + '═'.repeat(W) + '╗');
-  lines.push(pad(''));
+  lines.push(lpad(''));
   lines.push(center('B B  M I D I  M O N I T O R  v1.0'));
-  lines.push(pad(''));
+  lines.push(lpad(''));
   lines.push(hBar('═'));
-  lines.push(pad(''));
+  lines.push(lpad(''));
 
-  // Info lines
+  // Status section
   const rateStr = rate > 0 ? String(rate).padStart(4) + '/s' : '   0/s';
-  lines.push(pad('  INPUT:  ' + truncInput.padEnd(30) + 'MSGS: ' + String(msgCount).padStart(6) + '  ' + rateStr));
-
+  lines.push(lpad('  INPUT:  ' + truncInput.padEnd(22) + 'MSGS: ' + String(msgCount).padStart(5) + ' ' + rateStr));
   const statusPad = statusTxt.padEnd(18);
   const bpmPad = ('BPM: ' + bpmStr).padEnd(14);
-  lines.push(pad('  STATUS: ' + statusPad + bpmPad + transportStr));
-
-  if (errorMsg) {
-    lines.push(pad('  ' + errorMsg));
-  }
-
-  lines.push(pad(''));
+  lines.push(lpad('  STATUS: ' + statusPad + bpmPad + transportStr));
+  if (errorMsg) lines.push(lpad('  ' + errorMsg));
+  lines.push(lpad(''));
 
   // Channel activity
   let chHeader = '  CH ';
@@ -419,42 +504,42 @@ function render() {
     chHeader += String(i + 1).padStart(3);
     chBars += ('  ' + activityChar(channelActivity[i]));
   }
-  lines.push(pad(chHeader));
-  lines.push(pad(chBars));
+  lines.push(lpad(chHeader));
+  lines.push(lpad(chBars));
+  lines.push(lpad(''));
 
-  lines.push(pad(''));
+  // Staff section
   lines.push(hBar('═'));
-  lines.push(pad(''));
+  renderStaff(lines);
+  lines.push(lpad(''));
 
-  // Message log
-  if (!midiSupported) {
-    lines.push(center('Web MIDI API is not supported in this browser.'));
-    lines.push(center('Please use Chrome, Edge, or Opera.'));
-    for (let i = 0; i < LOG_LINES - 2; i++) lines.push(pad(''));
-  } else if (messages.length === 0) {
-    const emptyBefore = Math.floor((LOG_LINES - 2) / 2);
-    for (let i = 0; i < emptyBefore; i++) lines.push(pad(''));
-    lines.push(center('NO MIDI DATA'));
-    lines.push(center(inputs.length === 0 ? 'Press ⟳ DETECT to scan for devices' : 'Waiting for input...'));
-    const emptyAfter = LOG_LINES - 2 - emptyBefore;
-    for (let i = 0; i < emptyAfter; i++) lines.push(pad(''));
-  } else {
-    const filtered = getFilteredMessages();
-    const start = Math.max(0, filtered.length - LOG_LINES);
-    const display = filtered.slice(start);
+  // CC + Velocity bars
+  renderBars(lines);
+  lines.push(lpad(''));
 
-    // Pad top if fewer messages than LOG_LINES
-    for (let i = 0; i < LOG_LINES - display.length; i++) lines.push(pad(''));
+  // Log section (collapsible)
+  if (logVisible) {
+    lines.push(hBar('─'));
+    lines.push(lpad(''));
 
-    for (let i = 0; i < display.length; i++) {
-      const formatted = formatMsg(display[i]);
-      // Truncate to W chars
-      const truncated = formatted.length > W ? formatted.slice(0, W) : formatted;
-      lines.push(pad(truncated));
+    if (messages.length === 0) {
+      const emptyBefore = Math.floor((LOG_LINES - 1) / 2);
+      for (let i = 0; i < emptyBefore; i++) lines.push(lpad(''));
+      lines.push(center(inputs.length === 0 ? 'No MIDI devices detected' : 'Waiting for input...'));
+      const emptyAfter = LOG_LINES - 1 - emptyBefore;
+      for (let i = 0; i < emptyAfter; i++) lines.push(lpad(''));
+    } else {
+      const filtered = messages.filter(passesFilter);
+      const start = Math.max(0, filtered.length - LOG_LINES);
+      const display = filtered.slice(start);
+      for (let i = 0; i < LOG_LINES - display.length; i++) lines.push(lpad(''));
+      for (const msg of display) {
+        const formatted = formatMsg(msg);
+        lines.push(lpad(formatted.length > W ? formatted.slice(0, W) : formatted));
+      }
     }
+    lines.push(lpad(''));
   }
-
-  lines.push(pad(''));
 
   document.getElementById('display').textContent = lines.join('\n');
   document.getElementById('frame-mid').textContent = hBar('═');
@@ -478,7 +563,6 @@ async function requestMidi() {
     errorMsg = '?ERR: WEB MIDI NOT SUPPORTED';
     return;
   }
-
   try {
     midiAccess = await navigator.requestMIDIAccess({ sysex: false });
     midiAccess.onstatechange = onStateChange;
@@ -491,71 +575,44 @@ async function requestMidi() {
   }
 }
 
-function onStateChange(e) {
-  populateInputs();
-  connectInputs();
-}
+function onStateChange() { populateInputs(); connectInputs(); }
 
 function populateInputs() {
   if (!midiAccess) return;
   inputs = [];
   for (const input of midiAccess.inputs.values()) {
-    if (input.state === 'connected') {
-      inputs.push({ id: input.id, name: input.name || 'UNKNOWN' });
-    }
+    if (input.state === 'connected') inputs.push({ id: input.id, name: input.name || 'UNKNOWN' });
   }
-
   const sel = document.getElementById('midi-select');
   sel.innerHTML = '';
-
   if (inputs.length === 0) {
     const opt = document.createElement('option');
-    opt.value = '';
-    opt.textContent = '── NO DEVICES ──';
+    opt.value = ''; opt.textContent = '── NO DEVICES ──';
     sel.appendChild(opt);
     selectedInputId = '';
     return;
   }
-
-  // ALL option
   const allOpt = document.createElement('option');
-  allOpt.value = 'all';
-  allOpt.textContent = 'ALL INPUTS (' + inputs.length + ')';
+  allOpt.value = 'all'; allOpt.textContent = 'ALL INPUTS (' + inputs.length + ')';
   sel.appendChild(allOpt);
-
   inputs.forEach(inp => {
     const opt = document.createElement('option');
     opt.value = inp.id;
-    const truncName = inp.name.length > 40 ? inp.name.slice(0, 37) + '...' : inp.name;
-    opt.textContent = truncName;
+    opt.textContent = inp.name.length > 40 ? inp.name.slice(0,37) + '...' : inp.name;
     sel.appendChild(opt);
   });
-
-  // Restore selection or default to ALL
   if (selectedInputId && (selectedInputId === 'all' || inputs.find(i => i.id === selectedInputId))) {
     sel.value = selectedInputId;
-  } else {
-    selectedInputId = 'all';
-    sel.value = 'all';
-  }
+  } else { selectedInputId = 'all'; sel.value = 'all'; }
 }
 
-function switchInput() {
-  selectedInputId = document.getElementById('midi-select').value;
-  connectInputs();
-}
+function switchInput() { selectedInputId = document.getElementById('midi-select').value; connectInputs(); }
 
 function connectInputs() {
   if (!midiAccess) return;
-
-  // Disconnect all first
-  for (const input of midiAccess.inputs.values()) {
-    input.onmidimessage = null;
-  }
+  for (const input of midiAccess.inputs.values()) input.onmidimessage = null;
   currentInputIds = [];
-
   if (!selectedInputId) return;
-
   for (const input of midiAccess.inputs.values()) {
     if (input.state !== 'connected') continue;
     if (selectedInputId === 'all' || input.id === selectedInputId) {
@@ -569,65 +626,36 @@ function connectInputs() {
 function onMidiMessage(e) {
   const data = e.data;
   if (!data || data.length === 0) return;
-
   const status = data[0];
   const now = performance.now();
 
   msgTimestamps.push(now);
   msgCount++;
 
-  // Skip Active Sensing and Timing Clock display
-  if (status === 0xFE) return; // Active Sensing — always skip
-  if (status === 0xFF) return; // System Reset — rare, skip
+  if (status === 0xFE || status === 0xFF) return;
 
-  // Clock tick — track for BPM but don't log
-  if (status === 0xF8) {
-    handleClock(now);
-    return;
-  }
+  // Clock tick — BPM only
+  if (status === 0xF8) { handleClock(now); return; }
 
-  if (paused) return; // still count messages but don't log when paused
-
+  if (paused) return;
   const time = now - startTime;
 
   // System messages
   if (status >= 0xF0) {
     switch (status) {
-      case 0xFA:
-        transportState = 'PLAY';
-        addMessage({ time, type: 'START', ch: null });
-        return;
-      case 0xFB:
-        transportState = 'PLAY';
-        addMessage({ time, type: 'CONTINUE', ch: null });
-        return;
-      case 0xFC:
-        transportState = 'STOP';
-        addMessage({ time, type: 'STOP', ch: null });
-        return;
-      case 0xF0:
-        addMessage({ time, type: 'SYSEX', ch: null, byteCount: data.length });
-        return;
-      case 0xF1:
-        addMessage({ time, type: 'MTC', ch: null, d1: data[1] || 0 });
-        return;
-      case 0xF2: {
-        const pos = data.length >= 3 ? ((data[2] << 7) | data[1]) : 0;
-        addMessage({ time, type: 'SPP', ch: null, d1: pos });
-        return;
-      }
-      case 0xF3:
-        addMessage({ time, type: 'SONG_SEL', ch: null, d1: data[1] || 0 });
-        return;
-      default:
-        return;
+      case 0xFA: transportState = 'PLAY'; addMessage({ time, type: 'START', ch: null }); return;
+      case 0xFB: transportState = 'PLAY'; addMessage({ time, type: 'CONTINUE', ch: null }); return;
+      case 0xFC: transportState = 'STOP'; addMessage({ time, type: 'STOP', ch: null }); return;
+      case 0xF0: addMessage({ time, type: 'SYSEX', ch: null, byteCount: data.length }); return;
+      case 0xF1: addMessage({ time, type: 'MTC', ch: null, d1: data[1] || 0 }); return;
+      case 0xF2: { const pos = data.length >= 3 ? ((data[2] << 7) | data[1]) : 0; addMessage({ time, type: 'SPP', ch: null, d1: pos }); return; }
+      case 0xF3: addMessage({ time, type: 'SONG_SEL', ch: null, d1: data[1] || 0 }); return;
+      default: return;
     }
   }
 
-  // Channel messages
   const type = status & 0xF0;
   const ch = (status & 0x0F) + 1;
-
   channelActivity[ch - 1] = 1.0;
 
   switch (type) {
@@ -638,6 +666,8 @@ function onMidiMessage(e) {
       if (data[2] === 0) {
         addMessage({ time, type: 'NOTE_OFF', ch, d1: data[1], d2: 0 });
       } else {
+        lastNote = { midi: data[1], vel: data[2], ch };
+        noteFlash = 8;
         addMessage({ time, type: 'NOTE_ON', ch, d1: data[1], d2: data[2] });
       }
       break;
@@ -645,6 +675,7 @@ function onMidiMessage(e) {
       addMessage({ time, type: 'KEY_PRESS', ch, d1: data[1], d2: data[2] });
       break;
     case 0xB0:
+      lastCC = { cc: data[1], val: data[2], ch };
       addMessage({ time, type: 'CC', ch, d1: data[1], d2: data[2] });
       break;
     case 0xC0:
@@ -666,11 +697,10 @@ function addMessage(msg) {
   if (messages.length > MAX_MESSAGES) messages = messages.slice(-MAX_MESSAGES);
 }
 
-// ── BPM CALCULATION ──────────────────────────────
+// ── BPM ───────────────────────────────────────────
 function handleClock(now) {
   clockTimes.push(now);
   if (clockTimes.length > 48) clockTimes = clockTimes.slice(-48);
-
   if (clockTimes.length >= 6) {
     const recent = clockTimes.slice(-24);
     const totalTime = recent[recent.length - 1] - recent[0];
@@ -680,10 +710,7 @@ function handleClock(now) {
 }
 
 // ── CONTROLS ──────────────────────────────────────
-function toggleFilter(name) {
-  filters[name] = !filters[name];
-  updateFilterButtons();
-}
+function toggleFilter(name) { filters[name] = !filters[name]; updateFilterButtons(); }
 
 function updateFilterButtons() {
   for (const key of Object.keys(filters)) {
@@ -699,14 +726,21 @@ function togglePause() {
   btn.textContent = paused ? '► RESUME' : '‖ PAUSE';
 }
 
+function toggleLog() {
+  logVisible = !logVisible;
+  const btn = document.getElementById('btn-log');
+  btn.classList.toggle('log-active', logVisible);
+  btn.textContent = logVisible ? '▼ LOG' : '► LOG';
+}
+
 function clearLog() {
   messages = [];
   msgCount = 0;
   msgTimestamps = [];
+  lastNote = null;
+  lastCC = null;
   startTime = performance.now();
-  bpm = 0;
-  clockTimes = [];
-  transportState = '';
+  bpm = 0; clockTimes = []; transportState = '';
   for (let i = 0; i < 16; i++) channelActivity[i] = 0;
 }
 
@@ -721,40 +755,25 @@ function applyColors() {
   document.getElementById('display').style.color = txt;
   document.getElementById('display').style.textShadow = `0 0 8px ${txt}55`;
   document.querySelectorAll('.btn, #control-panel label, .crt-select').forEach(el => {
-    el.style.color = txt;
-    el.style.borderColor = txt + '88';
-    el.style.textShadow = `0 0 8px ${txt}55`;
+    el.style.color = txt; el.style.borderColor = txt + '88'; el.style.textShadow = `0 0 8px ${txt}55`;
   });
   document.querySelectorAll('.crt-select option').forEach(el => { el.style.color = txt; el.style.background = bg; });
   document.getElementById('crt').style.borderColor = txt + '33';
-  document.querySelectorAll('.frame-line').forEach(el => {
-    el.style.color = txt;
-    el.style.textShadow = `0 0 8px ${txt}55`;
-  });
+  document.querySelectorAll('.frame-line').forEach(el => { el.style.color = txt; el.style.textShadow = `0 0 8px ${txt}55`; });
   document.querySelectorAll('.sep').forEach(el => { el.style.background = txt + '55'; });
   document.querySelectorAll('input[type="color"]').forEach(el => { el.style.borderColor = txt + '88'; });
-  if (!colorStyleEl) {
-    colorStyleEl = document.createElement('style');
-    document.head.appendChild(colorStyleEl);
-  }
+  if (!colorStyleEl) { colorStyleEl = document.createElement('style'); document.head.appendChild(colorStyleEl); }
   colorStyleEl.textContent = `.crt-select { accent-color: ${txt}; }`;
-  // Re-apply filter button colors
   updateFilterButtons();
 }
 
 // ── KEYBOARD SHORTCUTS ────────────────────────────
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
-
   switch (e.key.toLowerCase()) {
-    case ' ':
-      e.preventDefault();
-      togglePause();
-      break;
-    case 'c':
-      e.preventDefault();
-      clearLog();
-      break;
+    case ' ': e.preventDefault(); togglePause(); break;
+    case 'c': e.preventDefault(); clearLog(); break;
+    case 'l': e.preventDefault(); toggleLog(); break;
     case '1': e.preventDefault(); toggleFilter('note'); break;
     case '2': e.preventDefault(); toggleFilter('cc'); break;
     case '3': e.preventDefault(); toggleFilter('bend'); break;
@@ -765,21 +784,12 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Blur controls after use
-document.querySelectorAll('select').forEach(el => {
-  el.addEventListener('change', () => el.blur());
-});
+document.querySelectorAll('select').forEach(el => { el.addEventListener('change', () => el.blur()); });
 
 // ── INIT ──────────────────────────────────────────
-if (!navigator.requestMIDIAccess) {
-  midiSupported = false;
-  errorMsg = '?ERR: WEB MIDI NOT SUPPORTED';
-}
-
+if (!navigator.requestMIDIAccess) { midiSupported = false; errorMsg = '?ERR: WEB MIDI NOT SUPPORTED'; }
 updateFilterButtons();
 requestAnimationFrame(render);
-
-// Auto-request MIDI on load
 requestMidi();
 
 // ── MOBILE SCALING ───────────────────────────────
@@ -790,9 +800,7 @@ function scaleCrt() {
   const p = 16;
   const crtW = crt.scrollWidth;
   const vpW = window.innerWidth;
-  if (crtW + p * 2 > vpW) {
-    crt.style.transform = `scale(${(vpW - p * 2) / crtW})`;
-  }
+  if (crtW + p * 2 > vpW) crt.style.transform = `scale(${(vpW - p * 2) / crtW})`;
 }
 window.addEventListener('resize', scaleCrt);
 requestAnimationFrame(scaleCrt);
