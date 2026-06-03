@@ -202,12 +202,12 @@ body {
 <script>
 
 // ── CONSTANTS ─────────────────────────────────────
-const W = 66;
+const W = 58;
 const LOG_LINES = 10;
 const BAR_W = 12;
-const CC_BAR_W = 24;
-const STAFF_W = 30;
-const STAFF_CENTER = 15;
+const CC_BAR_W = 20;
+const STAFF_W = 22;
+const STAFF_CENTER = 11;
 const MAX_MESSAGES = 500;
 
 const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -246,6 +246,9 @@ let transportState = '';
 
 let lastNote = null;   // { midi, vel, ch }
 let lastCC = null;     // { cc, val, ch }
+let lastBend = null;   // { val, ch }
+let lastAT = null;     // { val, ch }
+let lastPGM = null;    // { val, ch }
 let logVisible = false;
 
 let filters = {
@@ -318,70 +321,69 @@ function renderStaff(lines) {
   const velStr = lastNote ? String(lastNote.vel) : '---';
   const chStr = lastNote ? String(lastNote.ch) : '--';
 
-  // Map position → row (0-4) and on-line vs in-space
+  // Map to 3 rows: top (high), mid, bot (low)
   let noteRow = null;
-  let onLine = false;
   if (noteStaffPos !== null) {
-    onLine = noteStaffPos % 2 === 0;
-    noteRow = onLine ? (10 - noteStaffPos) / 2 : (11 - noteStaffPos) / 2;
+    if (noteStaffPos >= 9) noteRow = 0;
+    else if (noteStaffPos >= 5) noteRow = 1;
+    else noteRow = 2;
   }
 
-  // 5 rows — one per staff line, F5 (top) to E4 (bottom)
-  // ● = note on a line, ○ = note in the space just above this line
-  for (let row = 0; row < 5; row++) {
+  // 3 compact staff lines
+  for (let row = 0; row < 3; row++) {
     const hasNote = noteRow === row;
     const arr = new Array(STAFF_W);
     for (let i = 0; i < STAFF_W; i++) arr[i] = '─';
     if (hasNote) {
       const flash = noteFlash > 0 && noteFlash % 4 < 2;
-      arr[STAFF_CENTER] = onLine ? (flash ? '◉' : '●') : (flash ? '◎' : '○');
+      arr[STAFF_CENTER] = flash ? '◉' : '●';
       if (sharp) arr[STAFF_CENTER - 1] = '♯';
     }
 
     let info = '';
     if (row === 0) info = 'NOTE: ' + noteStr;
-    if (row === 2) info = 'VEL:  ' + velStr;
-    if (row === 4) info = 'CH:   ' + chStr;
+    if (row === 1) info = 'VEL:  ' + velStr;
+    if (row === 2) info = 'CH:   ' + chStr;
 
     const left = '    ' + arr.join('');
-    if (info) {
-      const full = left + ' '.repeat(Math.max(1, W - left.length - info.length - 2)) + info;
-      lines.push(lpad(full.length > W ? full.slice(0, W) : full));
-    } else {
-      lines.push(lpad(left));
-    }
+    const full = left + ' '.repeat(Math.max(1, W - left.length - info.length - 2)) + info;
+    lines.push(lpad(full.length > W ? full.slice(0, W) : full));
   }
 }
 
 // ── CC / VEL BARS ─────────────────────────────────
 function renderBars(lines) {
+  const LBL_W = 12;
+
   // CC bar
   if (lastCC) {
     const ccName = CC_NAMES[lastCC.cc] || '';
-    const label = 'CC ' + String(lastCC.cc).padStart(3,'0') + ' ' + ccName.slice(0,6).padEnd(6);
+    const label = ('CC ' + String(lastCC.cc).padStart(3,'0') + ' ' + ccName.slice(0,6)).padEnd(LBL_W);
     const bar = valueBar(lastCC.val, 127, CC_BAR_W);
-    const valStr = String(lastCC.val).padStart(3);
-    const chStr = 'ch ' + String(lastCC.ch).padStart(2);
-    lines.push(lpad('  ' + label + ' ' + bar + ' ' + valStr + '  ' + chStr));
+    lines.push(lpad('  ' + label + bar + ' ' + String(lastCC.val).padStart(3) + '  ch ' + String(lastCC.ch).padStart(2)));
   } else {
-    const emptyLabel = 'CC ---  ------';
-    const emptyBar = '░'.repeat(CC_BAR_W);
-    lines.push(lpad('  ' + emptyLabel + ' ' + emptyBar + ' ---'));
+    lines.push(lpad('  ' + 'CC ---'.padEnd(LBL_W) + '░'.repeat(CC_BAR_W) + ' ---'));
   }
 
   // Velocity bar
   if (lastNote) {
-    const nName = midiNoteName(lastNote.midi).padEnd(5);
-    const label = 'VEL   ' + nName + '    ';
+    const label = ('VEL ' + midiNoteName(lastNote.midi)).padEnd(LBL_W);
     const bar = valueBar(lastNote.vel, 127, CC_BAR_W);
-    const valStr = String(lastNote.vel).padStart(3);
-    const chStr = 'ch ' + String(lastNote.ch).padStart(2);
-    lines.push(lpad('  ' + label + ' ' + bar + ' ' + valStr + '  ' + chStr));
+    lines.push(lpad('  ' + label + bar + ' ' + String(lastNote.vel).padStart(3) + '  ch ' + String(lastNote.ch).padStart(2)));
   } else {
-    const emptyLabel = 'VEL   --        ';
-    const emptyBar = '░'.repeat(CC_BAR_W);
-    lines.push(lpad('  ' + emptyLabel + ' ' + emptyBar + ' ---'));
+    lines.push(lpad('  ' + 'VEL --'.padEnd(LBL_W) + '░'.repeat(CC_BAR_W) + ' ---'));
   }
+}
+
+// ── BEND / AT / PGM READOUTS ─────────────────────
+function renderReadouts(lines) {
+  const bv = lastBend ? ((lastBend.val >= 0 ? '+' : '') + lastBend.val).padStart(6) : ' -----';
+  const bc = lastBend ? String(lastBend.ch).padStart(2) : '--';
+  const av = lastAT ? String(lastAT.val).padStart(3) : '---';
+  const ac = lastAT ? String(lastAT.ch).padStart(2) : '--';
+  const pv = lastPGM ? String(lastPGM.val).padStart(3) : '---';
+  const pc = lastPGM ? String(lastPGM.ch).padStart(2) : '--';
+  lines.push(lpad('  BEND' + bv + ' ch' + bc + '   AT ' + av + ' ch' + ac + '   PGM ' + pv + ' ch' + pc));
 }
 
 // ── MESSAGE FORMATTING ───────────────────────────
@@ -469,7 +471,7 @@ function render() {
   let inputName = 'NONE';
   if (selectedInputId === 'all' && inputs.length > 0) inputName = 'ALL (' + inputs.length + ')';
   else { const inp = inputs.find(i => i.id === selectedInputId); if (inp) inputName = inp.name; }
-  const truncInput = inputName.length > 20 ? inputName.slice(0,17) + '...' : inputName;
+  const truncInput = inputName.length > 14 ? inputName.slice(0,11) + '...' : inputName;
 
   // BPM / Transport
   const bpmStr = bpm > 0 ? bpm.toFixed(1) : '---.-';
@@ -490,7 +492,7 @@ function render() {
 
   // Status section
   const rateStr = rate > 0 ? String(rate).padStart(4) + '/s' : '   0/s';
-  lines.push(lpad('  INPUT:  ' + truncInput.padEnd(22) + 'MSGS: ' + String(msgCount).padStart(5) + ' ' + rateStr));
+  lines.push(lpad('  INPUT: ' + truncInput.padEnd(15) + 'MSGS: ' + String(msgCount).padStart(5) + ' ' + rateStr));
   const statusPad = statusTxt.padEnd(18);
   const bpmPad = ('BPM: ' + bpmStr).padEnd(14);
   lines.push(lpad('  STATUS: ' + statusPad + bpmPad + transportStr));
@@ -513,8 +515,9 @@ function render() {
   renderStaff(lines);
   lines.push(lpad(''));
 
-  // CC + Velocity bars
+  // CC + Velocity bars + readouts
   renderBars(lines);
+  renderReadouts(lines);
   lines.push(lpad(''));
 
   // Log section (collapsible)
@@ -679,13 +682,16 @@ function onMidiMessage(e) {
       addMessage({ time, type: 'CC', ch, d1: data[1], d2: data[2] });
       break;
     case 0xC0:
+      lastPGM = { val: data[1], ch };
       addMessage({ time, type: 'PROG', ch, d1: data[1] });
       break;
     case 0xD0:
+      lastAT = { val: data[1], ch };
       addMessage({ time, type: 'CH_PRESS', ch, d1: data[1] });
       break;
     case 0xE0: {
       const bendVal = ((data[2] << 7) | data[1]) - 8192;
+      lastBend = { val: bendVal, ch };
       addMessage({ time, type: 'BEND', ch, d1: data[1], d2: data[2], bendVal });
       break;
     }
@@ -739,6 +745,9 @@ function clearLog() {
   msgTimestamps = [];
   lastNote = null;
   lastCC = null;
+  lastBend = null;
+  lastAT = null;
+  lastPGM = null;
   startTime = performance.now();
   bpm = 0; clockTimes = []; transportState = '';
   for (let i = 0; i < 16; i++) channelActivity[i] = 0;
