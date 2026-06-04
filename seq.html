@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BB SEQ v1.0</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0a0800;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+#crt {
+  position: relative;
+  background: #0c0a02;
+  border: 1px solid #333333;
+  padding: 24px;
+  width: min-content;
+}
+
+#crt::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px);
+  pointer-events: none;
+  z-index: 10;
+}
+
+#display-wrap {
+  position: relative;
+}
+
+#display {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  white-space: pre;
+  user-select: none;
+}
+
+#control-panel {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+}
+
+#control-panel .panel-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 12px;
+  background: transparent;
+  color: #FFFFFF;
+  border: 1px solid #555555;
+  padding: 6px 12px;
+  cursor: pointer;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  transition: background 0.15s, border-color 0.15s;
+  letter-spacing: 1px;
+}
+.btn:hover { background: rgba(255,255,255,0.08); border-color: #FFFFFF; }
+.transport-btn { width: 96px; text-align: center; }
+.btn:disabled { color: #333333; border-color: #222222; cursor: default; text-shadow: none; }
+.btn:disabled:hover { background: transparent; }
+
+.btn.rec-active {
+  color: #FF3000;
+  border-color: #FF3000;
+  text-shadow: 0 0 12px rgba(255,48,0,0.5);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.btn.play-active {
+  color: #00FF60;
+  border-color: #00FF60;
+  text-shadow: 0 0 12px rgba(0,255,96,0.5);
+}
+
+.btn.loop-active {
+  color: #00BFFF;
+  border-color: #00BFFF;
+  text-shadow: 0 0 12px rgba(0,191,255,0.5);
+  background: rgba(0,191,255,0.08);
+}
+
+.btn.overdub-active {
+  color: #FFB000;
+  border-color: #FFB000;
+  text-shadow: 0 0 12px rgba(255,176,0,0.5);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+#control-panel label {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 11px;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  letter-spacing: 1px;
+}
+
+.crt-select {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 11px;
+  background: #0c0a02;
+  color: #FFFFFF;
+  border: 1px solid #555555;
+  padding: 5px 6px;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  cursor: pointer;
+  outline: none;
+}
+.crt-select:hover { border-color: #FFFFFF; }
+.crt-select:disabled { color: #333333; border-color: #222222; cursor: default; text-shadow: none; }
+.crt-select option { background: #0c0a02; color: #FFFFFF; }
+
+#midi-in-select, #midi-out-select { max-width: 150px; }
+
+.crt-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 140px;
+  height: 4px;
+  background: #555555;
+  outline: none;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.crt-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 16px;
+  background: #FFFFFF;
+  cursor: pointer;
+  border: none;
+}
+.crt-slider::-moz-range-thumb {
+  width: 10px;
+  height: 16px;
+  background: #FFFFFF;
+  cursor: pointer;
+  border: none;
+}
+.crt-slider:disabled { opacity: 0.3; cursor: default; }
+
+.crt-input {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 11px;
+  background: #0c0a02;
+  color: #FFFFFF;
+  border: 1px solid #555555;
+  padding: 4px 4px;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  outline: none;
+  -moz-appearance: textfield;
+}
+.crt-input:hover { border-color: #FFFFFF; }
+.crt-input::-webkit-outer-spin-button,
+.crt-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+#control-panel input[type="color"] {
+  width: 32px; height: 24px; border: 1px solid #555555; background: transparent; cursor: pointer; padding: 0;
+}
+
+@keyframes pulse { 50% { opacity: 0.6; } }
+@keyframes flicker { 0%, 100% { opacity: 1; } 93% { opacity: 0.92; } 94% { opacity: 1; } }
+#crt { animation: flicker 8s infinite; }
+</style>
+</head>
+<body>
+<div id="crt">
+  <div id="display-wrap">
+  <pre id="display"></pre>
+  <div id="control-panel">
+    <div class="panel-row">
+      <label>IN:</label>
+      <select id="midi-in-select" class="crt-select" onchange="switchInput()">
+        <option value="">── NONE ──</option>
+      </select>
+      <label>OUT:</label>
+      <select id="midi-out-select" class="crt-select" onchange="switchOutput()">
+        <option value="">── NONE ──</option>
+      </select>
+      <button class="btn" onclick="requestMidi()" style="padding:4px 6px;font-size:11px;">⟳</button>
+    </div>
+
+    <div class="panel-row">
+      <label>SPEED:</label>
+      <input type="range" id="tempo-slider" class="crt-slider" min="0" max="400" step="1" value="100" oninput="changeTempo()" ondblclick="resetTempo()">
+      <input type="number" id="tempo-input" class="crt-input" min="0" max="400" value="100" onchange="changeSpeedInput()" style="width:42px;text-align:right;">
+      <label>%</label>
+    </div>
+
+    <div class="panel-row">
+      <label>TRANSPOSE:</label>
+      <button class="btn" onclick="transposeDown()" style="padding:4px 10px;">▼</button>
+      <label id="transpose-readout" style="min-width:40px;text-align:center;">0 ST</label>
+      <button class="btn" onclick="transposeUp()" style="padding:4px 10px;">▲</button>
+      <button class="btn" onclick="resetTranspose()" style="padding:4px 8px;font-size:11px;">RESET</button>
+    </div>
+
+    <div class="panel-row">
+      <button class="btn transport-btn" id="btn-rec" onclick="toggleRecOverdub()">● REC</button>
+      <button class="btn transport-btn" id="btn-play" onclick="togglePlay()">► PLAY</button>
+      <button class="btn transport-btn" id="btn-stop" onclick="stopAll()">■ STOP</button>
+    </div>
+
+    <div class="panel-row">
+      <button class="btn transport-btn" id="btn-loop" onclick="toggleLoop()">⟳ LOOP</button>
+      <button class="btn transport-btn" id="btn-undo" onclick="undoOverdub()" disabled>↩ UNDO</button>
+      <button class="btn transport-btn" id="btn-erase" onclick="eraseTape()">✕ ERASE</button>
+    </div>
+
+    <div class="panel-row">
+      <label>BG:</label>
+      <input type="color" id="color-bg" value="#0c0a02" onchange="applyColors()">
+      <label>TEXT:</label>
+      <input type="color" id="color-text" value="#FFFFFF" onchange="applyColors()">
+    </div>
+  </div>
+  </div>
+</div>
+
+<script>
+
+const W = 50;
+const POSITION_BAR_W = 28;
+const CTRL_ROWS = 11; // blank rows reserved for controls overlay
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const ROLL_ROWS = 5;
+const ROLL_W = 46; // chars wide for the roll area (W - 4 for padding/labels)
+
+// ── STATE ─────────────────────────────────────────
+let midiAccess = null;
+let midiInputs = [];
+let midiOutputs = [];
+let selectedInputId = '';
+let selectedOutputId = '';
+let currentInput = null;
+let currentOutput = null;
+
+// Sequence: array of { time (ms from loop start), data (Uint8Array raw MIDI bytes) }
+let sequence = [];
+let undoStack = []; // previous sequence states for undo
+
+// Transport
+let state = 'idle'; // idle | recording | playing | overdubbing
+let loopEnabled = true;
+let loopLengthMs = 0;
+let transportStartTime = 0; // performance.now() when transport started
+let transportOffset = 0;    // ms offset into loop
+
+// Speed
+let speedPct = 100; // playback speed as percentage
+let recordedSpeed = 100; // speed at time of recording (becomes the "100%" baseline)
+let playbackRate = 1.0;
+
+// Transpose
+let transpose = 0;
+
+// Display
+let tick = 0;
+let errorMsg = '';
+let midiSupported = true;
+let lastNoteDisplay = null; // { name, vel, ch, time }
+let activeNotes = new Map(); // key -> { note, ch } for note-off tracking
+let noteActivity = 0; // visual activity indicator
+let eraseArmed = false;
+let eraseTimeout = null;
+
+// ── DISPLAY HELPERS ───────────────────────────────
+function lpad(s) { return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║'; }
+function center(s) { const l = Math.floor((W - s.length) / 2); return '║' + ' '.repeat(l) + s + ' '.repeat(W - s.length - l) + '║'; }
+function hBar(ch) { return '╠' + ch.repeat(W) + '╣'; }
+
+function fmtTime(ms) {
+  const totalSec = Math.floor(Math.abs(ms) / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  const cs = Math.floor((Math.abs(ms) % 1000) / 10);
+  return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0') + '.' + String(cs).padStart(2,'0');
+}
+
+function midiNoteName(midi) {
+  return NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
+}
+
+function positionBar(pos, total) {
+  if (total <= 0) return '░'.repeat(POSITION_BAR_W);
+  const frac = Math.min(1, Math.max(0, pos / total));
+  const filled = Math.round(frac * POSITION_BAR_W);
+  let bar = '';
+  for (let i = 0; i < POSITION_BAR_W; i++) {
+    if (i === filled && filled < POSITION_BAR_W) bar += '▌';
+    else if (i < filled) bar += '─';
+    else bar += '░';
+  }
+  return bar;
+}
+
+// ── PIANO ROLL ────────────────────────────────────
+function renderPianoRoll(posMs) {
+  // Extract note-on events with duration info
+  const noteOns = [];
+  const pending = new Map(); // note -> start time
+  const duration = loopLengthMs > 0 ? loopLengthMs :
+    (state === 'recording' ? (transportOffset + (performance.now() - transportStartTime) * playbackRate) : 0);
+
+  for (const event of sequence) {
+    const status = event.data[0] & 0xF0;
+    const note = event.data[1];
+    const vel = event.data[2];
+    if (status === 0x90 && vel > 0) {
+      pending.set(note, event.time);
+    } else if (status === 0x80 || (status === 0x90 && vel === 0)) {
+      if (pending.has(note)) {
+        const start = pending.get(note);
+        noteOns.push({ note, start, end: event.time, vel: 100 });
+        pending.delete(note);
+      }
+    }
+  }
+  // Close any still-pending notes at duration
+  for (const [note, start] of pending) {
+    noteOns.push({ note, start, end: duration > 0 ? duration : start + 100, vel: 100 });
+  }
+
+  // Empty state
+  if (noteOns.length === 0) {
+    const rows = [];
+    for (let r = 0; r < ROLL_ROWS; r++) {
+      rows.push('  ' + ' '.repeat(ROLL_W));
+    }
+    return rows;
+  }
+
+  // Find pitch range
+  let minNote = 127, maxNote = 0;
+  for (const n of noteOns) {
+    if (n.note < minNote) minNote = n.note;
+    if (n.note > maxNote) maxNote = n.note;
+  }
+  // Pad range so single notes aren't squished
+  if (maxNote - minNote < ROLL_ROWS - 1) {
+    const center = Math.round((maxNote + minNote) / 2);
+    minNote = Math.max(0, center - Math.floor((ROLL_ROWS - 1) / 2));
+    maxNote = minNote + ROLL_ROWS - 1;
+  }
+  const pitchRange = maxNote - minNote;
+
+  // Time range
+  const totalTime = duration > 0 ? duration : 1;
+
+  // Build grid
+  const grid = [];
+  for (let r = 0; r < ROLL_ROWS; r++) grid.push(new Array(ROLL_W).fill(0));
+
+  for (const n of noteOns) {
+    // Map pitch to row (top = high, bottom = low)
+    const rowF = (1 - (n.note - minNote) / pitchRange) * (ROLL_ROWS - 1);
+    const row = Math.round(Math.max(0, Math.min(ROLL_ROWS - 1, rowF)));
+    // Map time to columns
+    const colStart = Math.floor((n.start / totalTime) * ROLL_W);
+    const colEnd = Math.max(colStart + 1, Math.ceil((n.end / totalTime) * ROLL_W));
+    for (let c = Math.max(0, colStart); c < Math.min(ROLL_W, colEnd); c++) {
+      grid[row][c] = Math.max(grid[row][c], 1);
+    }
+  }
+
+  // Add playhead
+  if (posMs > 0 && duration > 0) {
+    const headCol = Math.floor((posMs / totalTime) * ROLL_W);
+    if (headCol >= 0 && headCol < ROLL_W) {
+      for (let r = 0; r < ROLL_ROWS; r++) {
+        if (grid[r][headCol] === 0) grid[r][headCol] = 2; // playhead marker
+      }
+    }
+  }
+
+  // Render to strings
+  const rows = [];
+  for (let r = 0; r < ROLL_ROWS; r++) {
+    let line = '  ';
+    for (let c = 0; c < ROLL_W; c++) {
+      if (grid[r][c] === 1) line += '█';
+      else if (grid[r][c] === 2) line += '│';
+      else line += ' ';
+    }
+    rows.push(line);
+  }
+  return rows;
+}
+
+// ── RENDER ────────────────────────────────────────
+function render() {
+  tick++;
+
+  // Note activity decay
+  noteActivity *= 0.9;
+
+  // Current position
+  const spinning = state === 'recording' || state === 'playing' || state === 'overdubbing';
+  let posMs = 0;
+  if (spinning) {
+    const elapsed = (performance.now() - transportStartTime) * playbackRate;
+    posMs = transportOffset + elapsed;
+    if (loopEnabled && loopLengthMs > 0 && state !== 'recording') {
+      posMs = posMs % loopLengthMs;
+    }
+  } else if (state === 'idle' && loopLengthMs > 0) {
+    posMs = transportOffset;
+  }
+
+  // Auto-loop or auto-stop for playback/overdub
+  if ((state === 'playing' || state === 'overdubbing') && loopLengthMs > 0) {
+    const elapsed = (performance.now() - transportStartTime) * playbackRate;
+    const rawPos = transportOffset + elapsed;
+    if (rawPos >= loopLengthMs) {
+      if (loopEnabled) {
+        // Loop: handled by scheduling, just wrap display
+      } else {
+        // No loop: stop at end
+        stopAll();
+      }
+    }
+  }
+
+  // Status
+  let statusTxt;
+  switch (state) {
+    case 'idle': statusTxt = sequence.length > 0 ? '■ STOPPED' : 'READY.'; break;
+    case 'recording': statusTxt = '● REC'; break;
+    case 'playing': statusTxt = '► PLAYING'; break;
+    case 'overdubbing': statusTxt = '◉ OVERDUB'; break;
+  }
+
+  // Tags
+  const tags = [];
+  if (loopEnabled) tags.push('[LOOP]');
+  if (transpose !== 0) tags.push('[' + (transpose > 0 ? '+' : '') + transpose + 'ST]');
+  if (recordedSpeed !== 100) tags.push('[REC@' + recordedSpeed + '%]');
+  const tagsStr = tags.length > 0 ? '  ' + tags.join(' ') : '';
+
+  // Note count
+  const noteCount = sequence.filter(e => (e.data[0] & 0xF0) === 0x90 && e.data[2] > 0).length;
+
+  // Build display — entire frame rendered in one pre
+  const lines = [];
+  lines.push('╔' + '═'.repeat(W) + '╗');
+  lines.push(lpad(''));
+  lines.push(center('B B  S E Q  v1.0'));
+  lines.push(lpad(''));
+  lines.push(hBar('═'));
+
+  // Piano roll
+  const rollRows = renderPianoRoll(posMs);
+  for (const row of rollRows) {
+    lines.push(lpad(row));
+  }
+
+  lines.push(lpad(''));
+
+  // Position bar
+  const pBar = positionBar(posMs, loopLengthMs);
+  lines.push(lpad(' ' + fmtTime(posMs) + ' │' + pBar + '│ ' + fmtTime(loopLengthMs)));
+
+  lines.push(lpad(''));
+  lines.push(hBar('─'));
+  lines.push(lpad(''));
+
+  // Status info
+  lines.push(lpad('  STATUS: ' + statusTxt.padEnd(14) + 'NOTES: ' + String(noteCount).padStart(5)));
+  lines.push(lpad('  SPEED:  ' + String(speedPct).padStart(3) + '%' + tagsStr));
+
+  // Last note
+  if (lastNoteDisplay) {
+    const actChar = noteActivity > 0.3 ? '●' : noteActivity > 0.05 ? '○' : ' ';
+    lines.push(lpad('  NOTE:   ' + lastNoteDisplay.name.padEnd(6) + 'VEL: ' + String(lastNoteDisplay.vel).padStart(3) + '  CH: ' + String(lastNoteDisplay.ch).padStart(2) + '  ' + actChar));
+  } else {
+    lines.push(lpad('  NOTE:   --'));
+  }
+
+  if (errorMsg) {
+    lines.push(lpad(''));
+    lines.push(lpad('  ' + errorMsg));
+  }
+
+  lines.push(lpad(''));
+
+  // Divider before controls
+  lines.push(hBar('═'));
+
+  // Blank bordered rows for the control panel overlay
+  for (let i = 0; i < CTRL_ROWS; i++) {
+    lines.push(lpad(''));
+  }
+
+  // Bottom of frame
+  lines.push('╚' + '═'.repeat(W) + '╝');
+
+  document.getElementById('display').textContent = lines.join('\n');
+
+  // Position the control overlay to sit over the blank rows
+  const panel = document.getElementById('control-panel');
+  const displayEl = document.getElementById('display');
+  const lineH = displayEl.scrollHeight / lines.length;
+  const ctrlStartLine = lines.length - CTRL_ROWS - 1; // line after ╠═══╣
+  panel.style.top = (ctrlStartLine * lineH) + 'px';
+  panel.style.bottom = lineH + 'px'; // above the ╚═══╝ line
+  // Inset from the ║ characters (1 char width on each side)
+  const charW = displayEl.scrollWidth / (W + 2);
+  panel.style.left = charW + 'px';
+  panel.style.right = charW + 'px';
+
+  requestAnimationFrame(render);
+}
+
+// ── MIDI SETUP ────────────────────────────────────
+async function requestMidi() {
+  if (!navigator.requestMIDIAccess) {
+    midiSupported = false;
+    errorMsg = '?ERR: WEB MIDI NOT SUPPORTED';
+    return;
+  }
+  try {
+    midiAccess = await navigator.requestMIDIAccess({ sysex: false });
+    midiAccess.onstatechange = onStateChange;
+    populateDevices();
+    connectInput();
+    errorMsg = '';
+  } catch (e) {
+    errorMsg = '?ERR: MIDI ACCESS DENIED';
+  }
+}
+
+function onStateChange() { populateDevices(); connectInput(); }
+
+function populateDevices() {
+  if (!midiAccess) return;
+
+  // Inputs
+  midiInputs = [];
+  for (const input of midiAccess.inputs.values()) {
+    if (input.state === 'connected') midiInputs.push({ id: input.id, name: input.name || 'UNKNOWN' });
+  }
+  const inSel = document.getElementById('midi-in-select');
+  inSel.innerHTML = '';
+  if (midiInputs.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = ''; opt.textContent = '── NONE ──';
+    inSel.appendChild(opt);
+    selectedInputId = '';
+  } else {
+    const allOpt = document.createElement('option');
+    allOpt.value = 'all'; allOpt.textContent = 'ALL (' + midiInputs.length + ')';
+    inSel.appendChild(allOpt);
+    midiInputs.forEach(inp => {
+      const opt = document.createElement('option');
+      opt.value = inp.id;
+      opt.textContent = inp.name.length > 20 ? inp.name.slice(0,17) + '...' : inp.name;
+      inSel.appendChild(opt);
+    });
+    if (selectedInputId && (selectedInputId === 'all' || midiInputs.find(i => i.id === selectedInputId))) {
+      inSel.value = selectedInputId;
+    } else {
+      selectedInputId = 'all';
+      inSel.value = 'all';
+    }
+  }
+
+  // Outputs
+  midiOutputs = [];
+  for (const output of midiAccess.outputs.values()) {
+    if (output.state === 'connected') midiOutputs.push({ id: output.id, name: output.name || 'UNKNOWN' });
+  }
+  const outSel = document.getElementById('midi-out-select');
+  outSel.innerHTML = '';
+  if (midiOutputs.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = ''; opt.textContent = '── NONE ──';
+    outSel.appendChild(opt);
+    selectedOutputId = '';
+  } else {
+    const allOutOpt = document.createElement('option');
+    allOutOpt.value = 'all'; allOutOpt.textContent = 'ALL (' + midiOutputs.length + ')';
+    outSel.appendChild(allOutOpt);
+    midiOutputs.forEach(out => {
+      const opt = document.createElement('option');
+      opt.value = out.id;
+      opt.textContent = out.name.length > 20 ? out.name.slice(0,17) + '...' : out.name;
+      outSel.appendChild(opt);
+    });
+    if (selectedOutputId && (selectedOutputId === 'all' || midiOutputs.find(o => o.id === selectedOutputId))) {
+      outSel.value = selectedOutputId;
+    } else {
+      selectedOutputId = 'all';
+      outSel.value = 'all';
+    }
+  }
+
+  connectOutput();
+}
+
+function switchInput() {
+  selectedInputId = document.getElementById('midi-in-select').value;
+  connectInput();
+}
+
+function switchOutput() {
+  selectedOutputId = document.getElementById('midi-out-select').value;
+  connectOutput();
+}
+
+function connectInput() {
+  if (!midiAccess) return;
+  // Disconnect all existing listeners
+  for (const input of midiAccess.inputs.values()) input.onmidimessage = null;
+  currentInput = null;
+  if (!selectedInputId) return;
+  for (const input of midiAccess.inputs.values()) {
+    if (input.state !== 'connected') continue;
+    if (selectedInputId === 'all' || input.id === selectedInputId) {
+      input.onmidimessage = onMidiMessage;
+      if (selectedInputId !== 'all') { currentInput = input; break; }
+    }
+  }
+}
+
+function connectOutput() {
+  currentOutput = null;
+  if (!midiAccess || !selectedOutputId) return;
+  if (selectedOutputId === 'all') return; // handled in sendMidi
+  for (const output of midiAccess.outputs.values()) {
+    if (output.id === selectedOutputId && output.state === 'connected') {
+      currentOutput = output;
+      break;
+    }
+  }
+}
+
+// ── MIDI THRU + RECORD ────────────────────────────
+function onMidiMessage(e) {
+  const data = e.data;
+  if (!data || data.length === 0) return;
+  const status = data[0];
+
+  // Ignore clock/active sensing/sysex
+  if (status >= 0xF0) return;
+
+  // MIDI thru: always pass input to output
+  sendMidi(data);
+
+  // Update display for notes
+  const type = status & 0xF0;
+  const ch = (status & 0x0F) + 1;
+  if (type === 0x90 && data[2] > 0) {
+    lastNoteDisplay = { name: midiNoteName(data[1]), vel: data[2], ch };
+    noteActivity = 1.0;
+  }
+
+  // Record into sequence
+  if (state === 'recording' || state === 'overdubbing') {
+    const elapsed = (performance.now() - transportStartTime) * playbackRate;
+    let timeMs = transportOffset + elapsed;
+    if (state === 'overdubbing' && loopLengthMs > 0) {
+      timeMs = timeMs % loopLengthMs;
+    }
+    sequence.push({ time: timeMs, data: new Uint8Array(data) });
+  }
+}
+
+function sendMidi(data, applyTranspose) {
+  let outData = data;
+  if (applyTranspose && transpose !== 0) {
+    const status = data[0] & 0xF0;
+    if (status === 0x80 || status === 0x90) {
+      outData = new Uint8Array(data);
+      outData[1] = Math.max(0, Math.min(127, outData[1] + transpose));
+    }
+  }
+  if (selectedOutputId === 'all' && midiAccess) {
+    for (const output of midiAccess.outputs.values()) {
+      if (output.state === 'connected') output.send(outData);
+    }
+  } else if (currentOutput) {
+    currentOutput.send(outData);
+  }
+}
+
+// ── TRANSPORT ─────────────────────────────────────
+function finishRecording() {
+  const elapsed = (performance.now() - transportStartTime) * playbackRate;
+  loopLengthMs = transportOffset + elapsed;
+  state = 'idle';
+}
+
+function startPlaying() {
+  if (sequence.length === 0) return;
+  playbackRate = recordedSpeed > 0 ? speedPct / recordedSpeed : speedPct / 100;
+  transportOffset = 0;
+  state = 'playing';
+  transportStartTime = performance.now();
+  errorMsg = '';
+  startPlayback();
+  updateButtons();
+}
+
+function toggleRecOverdub() {
+  if (state === 'recording') {
+    // Done recording → auto-play
+    finishRecording();
+    startPlaying();
+    return;
+  }
+
+  if (state === 'overdubbing') {
+    // Done overdubbing → keep playing
+    const elapsed = (performance.now() - transportStartTime) * playbackRate;
+    transportOffset = (transportOffset + elapsed) % loopLengthMs;
+    cancelScheduled();
+    state = 'playing';
+    playbackRate = recordedSpeed > 0 ? speedPct / recordedSpeed : speedPct / 100;
+    transportStartTime = performance.now();
+    startPlayback();
+    updateButtons();
+    return;
+  }
+
+  if (sequence.length === 0) {
+    // Fresh recording
+    undoStack = [];
+    loopLengthMs = 0;
+    transportOffset = 0;
+    recordedSpeed = speedPct;
+    playbackRate = 1.0;
+    lastNoteDisplay = null;
+    state = 'recording';
+    transportStartTime = performance.now();
+    errorMsg = '';
+    updateButtons();
+    return;
+  }
+
+  // Has notes → overdub
+  if (state === 'playing') {
+    const elapsed = (performance.now() - transportStartTime) * playbackRate;
+    transportOffset = (transportOffset + elapsed) % loopLengthMs;
+    undoStack.push(sequence.map(e => ({ time: e.time, data: new Uint8Array(e.data) })));
+    if (undoStack.length > 20) undoStack.shift();
+    state = 'overdubbing';
+    transportStartTime = performance.now();
+    cancelScheduled();
+    startPlayback();
+    updateButtons();
+    return;
+  }
+
+  // Stopped with notes → start overdubbing from top
+  undoStack.push(sequence.map(e => ({ time: e.time, data: new Uint8Array(e.data) })));
+  if (undoStack.length > 20) undoStack.shift();
+  playbackRate = recordedSpeed > 0 ? speedPct / recordedSpeed : speedPct / 100;
+  transportOffset = 0;
+  state = 'overdubbing';
+  transportStartTime = performance.now();
+  errorMsg = '';
+  startPlayback();
+  updateButtons();
+}
+
+function togglePlay() {
+  if (state === 'recording') {
+    finishRecording();
+    startPlaying();
+    return;
+  }
+
+  if (state === 'playing') {
+    stopAll();
+    return;
+  }
+
+  if (state === 'overdubbing') {
+    const elapsed = (performance.now() - transportStartTime) * playbackRate;
+    transportOffset = (transportOffset + elapsed) % loopLengthMs;
+    cancelScheduled();
+    state = 'playing';
+    playbackRate = recordedSpeed > 0 ? speedPct / recordedSpeed : speedPct / 100;
+    transportStartTime = performance.now();
+    startPlayback();
+    updateButtons();
+    return;
+  }
+
+  if (sequence.length === 0) { errorMsg = '?ERR: NOTHING TO PLAY'; return; }
+  startPlaying();
+}
+
+function stopAll() {
+  if (state === 'recording') {
+    finishRecording();
+  }
+  cancelScheduled();
+  allNotesOff();
+  state = 'idle';
+  transportOffset = 0;
+  errorMsg = '';
+  updateButtons();
+}
+
+function undoOverdub() {
+  if (undoStack.length === 0) { errorMsg = '?ERR: NOTHING TO UNDO'; return; }
+  const wasPlaying = state === 'playing' || state === 'overdubbing';
+  if (wasPlaying) {
+    cancelScheduled();
+    allNotesOff();
+  }
+  sequence = undoStack.pop();
+  errorMsg = '';
+  if (wasPlaying) {
+    transportOffset = 0;
+    state = 'playing';
+    playbackRate = recordedSpeed > 0 ? speedPct / recordedSpeed : speedPct / 100;
+    transportStartTime = performance.now();
+    startPlayback();
+  }
+  updateButtons();
+}
+
+// ── PLAYBACK SCHEDULER ────────────────────────────
+let scheduledTimeouts = [];
+let playbackLoopTimeout = null;
+
+function cancelScheduled() {
+  for (const id of scheduledTimeouts) clearTimeout(id);
+  scheduledTimeouts = [];
+  if (playbackLoopTimeout) { clearTimeout(playbackLoopTimeout); playbackLoopTimeout = null; }
+}
+
+function startPlayback() {
+  cancelScheduled();
+  scheduleEvents();
+}
+
+function scheduleEvents() {
+  if (state !== 'playing' && state !== 'overdubbing') return;
+  if (loopLengthMs <= 0) return;
+
+  const now = performance.now();
+  const elapsed = (now - transportStartTime) * playbackRate;
+  const currentPos = transportOffset + elapsed;
+  const loopStart = Math.floor(currentPos / loopLengthMs) * loopLengthMs;
+
+  // Schedule all events in the current loop iteration
+  for (const event of sequence) {
+    const eventAbsTime = loopStart + event.time;
+    const delayMs = (eventAbsTime - currentPos) / playbackRate;
+    if (delayMs < -50) {
+      if (loopEnabled) {
+        const nextDelay = (eventAbsTime + loopLengthMs - currentPos) / playbackRate;
+        if (nextDelay > 0 && nextDelay < (loopLengthMs / playbackRate) + 100) {
+          const id = setTimeout(() => {
+            sendMidi(event.data, true);
+            const type = event.data[0] & 0xF0;
+            if (type === 0x90 && event.data[2] > 0) {
+              lastNoteDisplay = { name: midiNoteName(event.data[1]), vel: event.data[2], ch: (event.data[0] & 0x0F) + 1 };
+              noteActivity = 1.0;
+            }
+          }, nextDelay);
+          scheduledTimeouts.push(id);
+        }
+      }
+      continue;
+    }
+    if (delayMs > (loopLengthMs / playbackRate) + 100) continue;
+
+    const id = setTimeout(() => {
+      sendMidi(event.data, true);
+      const type = event.data[0] & 0xF0;
+      if (type === 0x90 && event.data[2] > 0) {
+        lastNoteDisplay = { name: midiNoteName(event.data[1]), vel: event.data[2], ch: (event.data[0] & 0x0F) + 1 };
+        noteActivity = 1.0;
+      }
+    }, Math.max(0, delayMs));
+    scheduledTimeouts.push(id);
+  }
+
+  // Schedule next loop iteration
+  if (loopEnabled) {
+    const nextLoopStart = loopStart + loopLengthMs;
+    const nextLoopDelay = (nextLoopStart - currentPos) / playbackRate;
+    playbackLoopTimeout = setTimeout(() => {
+      transportOffset = 0;
+      transportStartTime = performance.now();
+      scheduleEvents();
+    }, Math.max(0, nextLoopDelay - 10));
+  } else {
+    const endDelay = (loopLengthMs - currentPos) / playbackRate;
+    if (endDelay > 0) {
+      playbackLoopTimeout = setTimeout(() => stopAll(), endDelay);
+    }
+  }
+}
+
+function allNotesOff() {
+  const outputs = [];
+  if (selectedOutputId === 'all' && midiAccess) {
+    for (const output of midiAccess.outputs.values()) {
+      if (output.state === 'connected') outputs.push(output);
+    }
+  } else if (currentOutput) {
+    outputs.push(currentOutput);
+  }
+  for (const out of outputs) {
+    for (let ch = 0; ch < 16; ch++) {
+      out.send([0xB0 | ch, 123, 0]);
+    }
+  }
+}
+
+// ── SPEED ─────────────────────────────────────────
+function updateSpeed(newPct) {
+  speedPct = Math.max(0, Math.min(400, newPct));
+  document.getElementById('tempo-slider').value = speedPct;
+  document.getElementById('tempo-input').value = speedPct;
+  const effectiveRate = recordedSpeed > 0 ? speedPct / recordedSpeed : speedPct / 100;
+  if (state === 'playing' || state === 'overdubbing') {
+    const elapsed = (performance.now() - transportStartTime) * playbackRate;
+    transportOffset = transportOffset + elapsed;
+    if (loopLengthMs > 0) transportOffset = transportOffset % loopLengthMs;
+    playbackRate = effectiveRate;
+    transportStartTime = performance.now();
+    startPlayback();
+  } else {
+    playbackRate = effectiveRate;
+  }
+}
+
+function changeTempo() {
+  updateSpeed(parseInt(document.getElementById('tempo-slider').value));
+}
+
+function changeSpeedInput() {
+  updateSpeed(parseInt(document.getElementById('tempo-input').value) || 100);
+}
+
+function resetTempo() {
+  updateSpeed(100);
+}
+
+// ── TRANSPOSE ─────────────────────────────────────
+function transposeUp() {
+  if (transpose < 24) { transpose++; updateTransposeDisplay(); }
+}
+
+function transposeDown() {
+  if (transpose > -24) { transpose--; updateTransposeDisplay(); }
+}
+
+function resetTranspose() {
+  transpose = 0;
+  updateTransposeDisplay();
+}
+
+function updateTransposeDisplay() {
+  const sign = transpose > 0 ? '+' : '';
+  document.getElementById('transpose-readout').textContent = sign + transpose + ' ST';
+}
+
+// ── LOOP ──────────────────────────────────────────
+function toggleLoop() {
+  loopEnabled = !loopEnabled;
+  document.getElementById('btn-loop').classList.toggle('loop-active', loopEnabled);
+}
+
+// ── ERASE ─────────────────────────────────────────
+function eraseTape() {
+  if (state === 'recording' || state === 'playing' || state === 'overdubbing') return;
+  if (!eraseArmed) {
+    eraseArmed = true;
+    document.getElementById('btn-erase').textContent = '⚠ SURE?';
+    document.getElementById('btn-erase').style.color = '#FF3000';
+    document.getElementById('btn-erase').style.borderColor = '#FF3000';
+    eraseTimeout = setTimeout(() => {
+      eraseArmed = false;
+      document.getElementById('btn-erase').textContent = '✕ ERASE';
+      document.getElementById('btn-erase').style.color = '';
+      document.getElementById('btn-erase').style.borderColor = '';
+    }, 3000);
+    return;
+  }
+  clearTimeout(eraseTimeout);
+  eraseArmed = false;
+  document.getElementById('btn-erase').textContent = '✕ ERASE';
+  document.getElementById('btn-erase').style.color = '';
+  document.getElementById('btn-erase').style.borderColor = '';
+  sequence = [];
+  undoStack = [];
+  loopLengthMs = 0;
+  transportOffset = 0;
+  transpose = 0;
+  lastNoteDisplay = null;
+  speedPct = 100;
+  recordedSpeed = 100;
+  playbackRate = 1.0;
+  document.getElementById('tempo-slider').value = 100;
+  document.getElementById('tempo-input').value = 100;
+  state = 'idle';
+  errorMsg = '';
+  updateTransposeDisplay();
+  updateButtons();
+}
+
+// ── BUTTON STATES ─────────────────────────────────
+function updateButtons() {
+  const btnRec = document.getElementById('btn-rec');
+  const btnPlay = document.getElementById('btn-play');
+  const btnStop = document.getElementById('btn-stop');
+  const btnUndo = document.getElementById('btn-undo');
+  const btnErase = document.getElementById('btn-erase');
+
+  btnRec.classList.remove('rec-active', 'overdub-active');
+  btnPlay.classList.remove('play-active');
+  document.getElementById('btn-loop').classList.toggle('loop-active', loopEnabled);
+
+  const hasSequence = sequence.length > 0;
+
+  // Contextual label: REC when empty, OVERDUB when has notes
+  btnRec.textContent = hasSequence ? '◉ OVERDUB' : '● REC';
+
+  switch (state) {
+    case 'idle':
+      btnRec.disabled = false;
+      btnPlay.disabled = !hasSequence;
+      btnStop.disabled = true;
+      btnUndo.disabled = undoStack.length === 0;
+      btnErase.disabled = !hasSequence;
+      break;
+    case 'recording':
+      btnRec.disabled = false;
+      btnRec.classList.add('rec-active');
+      btnPlay.disabled = false;
+      btnStop.disabled = false;
+      btnUndo.disabled = true;
+      btnErase.disabled = true;
+      break;
+    case 'playing':
+      btnRec.disabled = false;
+      btnPlay.disabled = false;
+      btnPlay.classList.add('play-active');
+      btnStop.disabled = false;
+      btnUndo.disabled = true;
+      btnErase.disabled = true;
+      break;
+    case 'overdubbing':
+      btnRec.disabled = false;
+      btnRec.classList.add('overdub-active');
+      btnPlay.disabled = false;
+      btnStop.disabled = false;
+      btnUndo.disabled = true;
+      btnErase.disabled = true;
+      break;
+  }
+}
+
+// ── COLORS ────────────────────────────────────────
+let colorStyleEl = null;
+
+function applyColors() {
+  const bg = document.getElementById('color-bg').value;
+  const txt = document.getElementById('color-text').value;
+  document.body.style.background = bg;
+  document.getElementById('crt').style.background = bg;
+  document.getElementById('display').style.color = txt;
+  document.getElementById('display').style.textShadow = `0 0 8px ${txt}55`;
+  document.querySelectorAll('.btn, #control-panel label, .crt-select, .crt-input').forEach(el => {
+    el.style.color = txt; el.style.borderColor = txt + '88'; el.style.textShadow = `0 0 8px ${txt}55`;
+  });
+  document.querySelectorAll('.crt-select option').forEach(el => { el.style.color = txt; el.style.background = bg; });
+  document.getElementById('crt').style.borderColor = txt + '33';
+  document.querySelectorAll('input[type="color"]').forEach(el => { el.style.borderColor = txt + '88'; });
+  const slider = document.getElementById('tempo-slider');
+  slider.style.background = txt + '55';
+  if (!colorStyleEl) { colorStyleEl = document.createElement('style'); document.head.appendChild(colorStyleEl); }
+  colorStyleEl.textContent = `
+    .crt-slider::-webkit-slider-thumb { background: ${txt} !important; }
+    .crt-slider::-moz-range-thumb { background: ${txt} !important; }
+    .crt-select { accent-color: ${txt}; }
+  `;
+  updateButtons();
+}
+
+// ── KEYBOARD SHORTCUTS ────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+
+  switch (e.key.toLowerCase()) {
+    case 'r':
+      e.preventDefault();
+      if (!document.getElementById('btn-rec').disabled) toggleRecOverdub();
+      break;
+    case ' ':
+      e.preventDefault();
+      if (state === 'playing' || state === 'recording' || state === 'overdubbing') stopAll();
+      else if (sequence.length > 0) togglePlay();
+      break;
+    case 'l':
+      e.preventDefault();
+      toggleLoop();
+      break;
+    case 'e':
+      e.preventDefault();
+      if (!document.getElementById('btn-erase').disabled) eraseTape();
+      break;
+    case 'z':
+      e.preventDefault();
+      if (!document.getElementById('btn-undo').disabled) undoOverdub();
+      break;
+    case 'arrowup':
+      e.preventDefault();
+      if (e.shiftKey) { for (let i = 0; i < 12; i++) transposeUp(); }
+      else transposeUp();
+      break;
+    case 'arrowdown':
+      e.preventDefault();
+      if (e.shiftKey) { for (let i = 0; i < 12; i++) transposeDown(); }
+      else transposeDown();
+      break;
+    case 'arrowright':
+      e.preventDefault();
+      updateSpeed(speedPct + (e.shiftKey ? 10 : 1));
+      break;
+    case 'arrowleft':
+      e.preventDefault();
+      updateSpeed(speedPct - (e.shiftKey ? 10 : 1));
+      break;
+  }
+});
+
+document.querySelectorAll('select, input[type="range"]').forEach(el => {
+  el.addEventListener('change', () => el.blur());
+});
+
+// ── INIT ──────────────────────────────────────────
+if (!navigator.requestMIDIAccess) { midiSupported = false; errorMsg = '?ERR: WEB MIDI NOT SUPPORTED'; }
+updateButtons();
+requestAnimationFrame(render);
+requestMidi();
+
+// ── MOBILE SCALING ────────────────────────────────
+function scaleCrt() {
+  const crt = document.getElementById('crt');
+  crt.style.transform = '';
+  crt.style.transformOrigin = 'top center';
+  const p = 16;
+  const crtW = crt.scrollWidth;
+  const vpW = window.innerWidth;
+  if (crtW + p * 2 > vpW) crt.style.transform = `scale(${(vpW - p * 2) / crtW})`;
+}
+window.addEventListener('resize', scaleCrt);
+requestAnimationFrame(scaleCrt);
+
+</script>
+</body>
+</html>
