@@ -1,0 +1,1575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BB METERS v1.0</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0a0800;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+#crt {
+  position: relative;
+  background: #0c0a02;
+  border: 1px solid #333333;
+  border-radius: 0;
+  padding: 28px 36px;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  width: min-content;
+}
+
+#crt::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.06) 2px,
+    rgba(0, 0, 0, 0.06) 4px
+  );
+  pointer-events: none;
+  border-radius: 0;
+  z-index: 10;
+}
+
+.display-text {
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  white-space: pre;
+  user-select: none;
+}
+
+#viz-wrapper {
+  position: relative;
+  align-self: stretch;
+  text-align: center;
+}
+
+#viz {
+  display: inline-block;
+  text-align: left;
+  line-height: 1;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+#control-panel {
+  padding: 10px 16px;
+  position: relative;
+  z-index: 20;
+  align-self: stretch;
+  overflow: hidden;
+}
+
+.panel-border {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+  margin: 0;
+  padding: 0;
+}
+
+.panel-border-left { left: 0; }
+.panel-border-right { right: 0; }
+
+.frame-line {
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  white-space: pre;
+  user-select: none;
+}
+
+#control-panel .panel-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+}
+
+#control-panel .panel-row + .panel-row {
+  margin-top: 8px;
+}
+
+.btn {
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  background: transparent;
+  color: #FFFFFF;
+  border: 1px solid #555555;
+  padding: 6px 12px;
+  cursor: pointer;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  transition: background 0.15s, border-color 0.15s;
+  letter-spacing: 1px;
+}
+
+.btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #FFFFFF;
+}
+
+.btn.active {
+  color: #00FF60;
+  border-color: #00FF60;
+  text-shadow: 0 0 12px rgba(0, 255, 96, 0.5);
+}
+
+.btn:disabled {
+  color: #333333;
+  border-color: #222222;
+  cursor: default;
+  text-shadow: none;
+}
+
+.btn:disabled:hover { background: transparent; }
+
+#control-panel label {
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  letter-spacing: 1px;
+}
+
+.crt-select {
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  background: #0c0a02;
+  color: #FFFFFF;
+  border: 1px solid #555555;
+  padding: 5px 6px;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  outline: none;
+}
+
+.crt-select:hover { border-color: #FFFFFF; }
+
+.crt-select option {
+  background: #0c0a02;
+  color: #FFFFFF;
+}
+
+#mic-select { max-width: 280px; }
+
+.crt-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 120px;
+  height: 4px;
+  background: #555555;
+  outline: none;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.crt-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 16px;
+  background: #FFFFFF;
+  cursor: pointer;
+  border: none;
+}
+
+.crt-slider::-moz-range-thumb {
+  width: 10px;
+  height: 16px;
+  background: #FFFFFF;
+  cursor: pointer;
+  border: none;
+}
+
+#control-panel input[type="color"] {
+  width: 32px;
+  height: 24px;
+  border: 1px solid #555555;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  93% { opacity: 0.92; }
+  94% { opacity: 1; }
+}
+
+#crt { animation: flicker 8s infinite; }
+</style>
+</head>
+<body>
+<div id="crt">
+  <pre id="display-top" class="display-text"></pre>
+  <div id="viz-wrapper">
+    <pre id="viz-border-l" class="frame-line panel-border panel-border-left"></pre>
+    <pre id="viz" class="display-text"></pre>
+    <pre id="viz-border-r" class="frame-line panel-border panel-border-right"></pre>
+  </div>
+  <pre id="display-bottom" class="display-text"></pre>
+  <pre id="frame-mid" class="frame-line"></pre>
+  <div id="control-panel">
+    <pre id="border-left" class="frame-line panel-border panel-border-left"></pre>
+    <pre id="border-right" class="frame-line panel-border panel-border-right"></pre>
+
+    <div class="panel-row">
+      <label>INPUT:</label>
+      <select id="mic-select" class="crt-select" onchange="switchDevice()">
+        <option value="">── NO DEVICES ──</option>
+      </select>
+      <button class="btn" onclick="requestAccess()" style="padding:4px 8px;font-size:11px;">⟳ DETECT</button>
+    </div>
+
+    <div class="panel-row">
+      <label>MODE:</label>
+      <select id="mode-select" class="crt-select" onchange="changeMode()">
+        <option value="all" selected>ALL</option>
+        <option value="spectrum">SPECTRUM</option>
+        <option value="scope">SCOPE</option>
+        <option value="gram">GRAM</option>
+        <option value="lissajous">LISSAJOUS</option>
+        <option value="vu">VU METER</option>
+      </select>
+      <label>FFT:</label>
+      <select id="fft-select" class="crt-select" onchange="changeFFT()">
+        <option value="512">512</option>
+        <option value="1024">1024</option>
+        <option value="2048" selected>2048</option>
+        <option value="4096">4096</option>
+        <option value="8192">8192</option>
+      </select>
+    </div>
+
+    <div class="panel-row">
+      <label>GAIN:</label>
+      <input type="range" id="gain-slider" class="crt-slider" min="-12" max="24" step="1" value="0" oninput="changeGain()" ondblclick="resetGain()">
+      <label id="gain-readout" style="min-width:42px;text-align:right;cursor:pointer;" ondblclick="resetGain()">0 dB</label>
+      <label>RES:</label>
+      <input type="range" id="res-slider" class="crt-slider" min="1" max="15" step="1" value="12" oninput="changeRes()" ondblclick="resetRes()">
+      <label id="res-readout" style="min-width:32px;text-align:right;cursor:pointer;" ondblclick="resetRes()">12px</label>
+    </div>
+
+    <div class="panel-row">
+      <button class="btn" id="btn-start" onclick="toggleAudio()">▶ START</button>
+      <button class="btn" id="btn-hold" onclick="toggleHold()" disabled>❚❚ HOLD</button>
+    </div>
+
+    <div class="panel-row">
+      <label>BG:</label>
+      <input type="color" id="color-bg" value="#0c0a02" onchange="applyColors()">
+      <label>TEXT:</label>
+      <input type="color" id="color-text" value="#FFFFFF" onchange="applyColors()">
+    </div>
+  </div>
+  <pre id="frame-bot" class="frame-line"></pre>
+</div>
+<script>
+
+// ── CONSTANTS ──────────────────────────────────────
+
+const FIXED_FONT = 12;
+const W = 64;
+const VU_W = 52;
+let SPEC_W = 58;
+let SPEC_H = 18;
+let vizFontSize = 12;
+const BLOCKS = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+const GRAM_CHARS = [' ', '·', '░', '▒', '▓', '█'];
+const LISS_DECAY = 0.92;
+let QUAD_W = 28;
+let QUAD_H = 8;
+
+// ── STATE ──────────────────────────────────────────
+
+let audioCtx = null;
+let stream = null;
+let sourceNode = null;
+let gainNode = null;
+let analyserNode = null;
+let splitterNode = null;
+let analyserL = null;
+let analyserR = null;
+let silentGain = null;
+
+let sampleRate = 44100;
+let fftSize = 2048;
+let devices = [];
+let selectedDeviceId = '';
+let active = false;
+let frozen = false;
+let mode = 'all';
+let errorMsg = '';
+
+let bands = [];
+let peaks = [];
+let gramHistory = [];
+let lissGrid = null;
+let miniBands = [];
+let miniPeaks = null;
+let miniGramHistory = [];
+let miniLissGrid = null;
+
+let vuL = 0, vuR = 0;
+let rawVuL = 0, rawVuR = 0;
+let vuNeedleVal = 0;
+let vuNeedleL = 0;
+let vuNeedleR = 0;
+let vuRangeMin = -20;
+let peakLevel = 0;
+let peakHoldDb = -Infinity;
+let peakHoldTimer = 0;
+
+let tick = 0;
+
+// ── RESOLUTION ─────────────────────────────────────
+
+function recalcDimensions(fontSize) {
+  vizFontSize = fontSize;
+
+  // Fixed pixel box matching the 12px default layout
+  const fixedCharW = FIXED_FONT * 0.6;
+  const fixedCharH = FIXED_FONT * 1.45;
+  const defaultSpecW = W - 6;               // 58 content chars at 12px
+  const vizPxW = (defaultSpecW + 2) * fixedCharW;  // ┌ + content + ┐
+  const vizPxH = (21 + 2) * fixedCharH;            // frame top + content + frame bottom (room for ALL+VU)
+
+  // How many chars fit in that fixed box at the new font size
+  const vizCharW = fontSize * 0.6;
+  const vizCharH = fontSize * 1.0;  // line-height: 1 on viz element
+  const totalCols = Math.floor(vizPxW / vizCharW);
+  const totalRows = Math.floor(vizPxH / vizCharH);
+
+  SPEC_W = Math.max(10, totalCols - 2);
+  if (SPEC_W % 2 !== 0) SPEC_W--;
+  SPEC_H = Math.max(4, totalRows - 2);
+  if (SPEC_H % 2 !== 0) SPEC_H--;
+
+  QUAD_W = Math.floor((SPEC_W - 2) / 2);
+  // QUAD_H sized so ALL mode (2*QUAD_H + 8 VU/border rows) fits in totalRows
+  QUAD_H = Math.max(3, Math.floor((totalRows - 8) / 2));
+
+  // Apply variable font + fixed height to viz element (no fixed width — let content size naturally for centering)
+  const vizEl = document.getElementById('viz');
+  vizEl.style.fontSize = fontSize + 'px';
+  vizEl.style.height = vizPxH + 'px';
+
+  // Reinitialize all display state
+  initBands();
+  initMiniBands();
+  peaks = new Float32Array(SPEC_W).fill(0);
+  gramHistory = [];
+  lissGrid = null;
+  miniPeaks = new Float32Array(QUAD_W).fill(0);
+  miniGramHistory = [];
+  miniLissGrid = null;
+  vuNeedleVal = 0;
+  vuNeedleL = 0;
+  vuNeedleR = 0;
+}
+
+function changeRes() {
+  const val = parseInt(document.getElementById('res-slider').value);
+  if (mode === 'vu') {
+    vuRangeMin = -20 + (val - 1) * (21 / 14);
+    const span = Math.round(3 - vuRangeMin);
+    document.getElementById('res-readout').textContent = span + 'dB';
+  } else {
+    document.getElementById('res-readout').textContent = val + 'px';
+    recalcDimensions(val);
+  }
+}
+
+// ── HELPERS ────────────────────────────────────────
+
+function pad(s) {
+  return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║';
+}
+
+function center(s) {
+  const l = Math.floor((W - s.length) / 2);
+  return '║' + ' '.repeat(l) + s + ' '.repeat(W - s.length - l) + '║';
+}
+
+function hBar(ch) { return '╠' + ch.repeat(W) + '╣'; }
+
+function vuBar(level) {
+  const n = Math.round(Math.min(1, level) * VU_W);
+  let bar = '';
+  for (let i = 0; i < VU_W; i++) {
+    if (i < n) {
+      bar += (i >= VU_W * 0.85) ? '▓' : '█';
+    } else {
+      bar += '░';
+    }
+  }
+  return bar;
+}
+
+function getDeviceName() {
+  if (!selectedDeviceId || devices.length === 0) return 'NONE';
+  const d = devices.find(d => d.deviceId === selectedDeviceId);
+  return d ? (d.label || 'UNKNOWN') : 'NONE';
+}
+
+// ── BAND CALCULATION ───────────────────────────────
+
+function initBands() {
+  const minFreq = 25;
+  const maxFreq = Math.min(20000, sampleRate / 2);
+  bands = [];
+  peaks = new Float32Array(SPEC_W).fill(0);
+
+  const logMin = Math.log10(minFreq);
+  const logMax = Math.log10(maxFreq);
+
+  for (let i = 0; i < SPEC_W; i++) {
+    const f0 = Math.pow(10, logMin + i * (logMax - logMin) / SPEC_W);
+    const f1 = Math.pow(10, logMin + (i + 1) * (logMax - logMin) / SPEC_W);
+    const bin0 = Math.max(0, Math.round(f0 * fftSize / sampleRate));
+    const bin1 = Math.min(fftSize / 2 - 1, Math.round(f1 * fftSize / sampleRate));
+    bands.push({ f0, f1, bin0, bin1: Math.max(bin0, bin1) });
+  }
+}
+
+function buildFreqAxis() {
+  const axis = new Array(SPEC_W).fill(' ');
+  const markers = [
+    { freq: 50, label: '50' },
+    { freq: 100, label: '100' },
+    { freq: 250, label: '250' },
+    { freq: 500, label: '500' },
+    { freq: 1000, label: '1k' },
+    { freq: 2000, label: '2k' },
+    { freq: 5000, label: '5k' },
+    { freq: 10000, label: '10k' },
+  ];
+
+  for (const { freq, label } of markers) {
+    if (freq > sampleRate / 2) continue;
+    let bestBand = 0, bestDist = Infinity;
+    for (let i = 0; i < bands.length; i++) {
+      const c = Math.sqrt(bands[i].f0 * bands[i].f1);
+      const d = Math.abs(Math.log10(c) - Math.log10(freq));
+      if (d < bestDist) { bestDist = d; bestBand = i; }
+    }
+    const pos = bestBand - Math.floor(label.length / 2);
+    if (pos >= 0 && pos + label.length <= SPEC_W) {
+      let ok = true;
+      for (let j = Math.max(0, pos - 1); j < Math.min(SPEC_W, pos + label.length + 1); j++) {
+        if (axis[j] !== ' ') { ok = false; break; }
+      }
+      if (ok) {
+        for (let j = 0; j < label.length; j++) axis[pos + j] = label[j];
+      }
+    }
+  }
+
+  // Place Hz inside the axis, right-aligned
+  if (SPEC_W > 4) {
+    axis[SPEC_W - 2] = 'H';
+    axis[SPEC_W - 1] = 'z';
+  }
+  return ' ' + axis.join('') + ' ';
+}
+
+// ── SPECTRUM RENDER ────────────────────────────────
+
+function renderSpectrum(freqData) {
+  const rows = [];
+  const levels = new Float32Array(SPEC_W);
+
+  if (freqData) {
+    for (let i = 0; i < SPEC_W; i++) {
+      const { bin0, bin1 } = bands[i];
+      let max = 0;
+      for (let b = bin0; b <= bin1; b++) {
+        if (b < freqData.length && freqData[b] > max) max = freqData[b];
+      }
+      levels[i] = max / 255;
+
+      if (levels[i] >= peaks[i]) {
+        peaks[i] = levels[i];
+      } else {
+        peaks[i] = Math.max(0, peaks[i] - 0.004);
+      }
+    }
+  }
+
+  for (let row = 0; row < SPEC_H; row++) {
+    let line = '';
+    for (let band = 0; band < SPEC_W; band++) {
+      const barHeight = levels[band] * SPEC_H;
+      const rowFromBottom = SPEC_H - 1 - row;
+
+      if (rowFromBottom < Math.floor(barHeight)) {
+        line += '█';
+      } else if (rowFromBottom === Math.floor(barHeight)) {
+        const frac = barHeight - Math.floor(barHeight);
+        line += BLOCKS[Math.round(frac * 8)];
+      } else {
+        const peakRow = Math.floor(peaks[band] * SPEC_H);
+        if (rowFromBottom === peakRow && peaks[band] > 0.02 && peaks[band] > levels[band] + 0.02) {
+          line += '─';
+        } else {
+          line += ' ';
+        }
+      }
+    }
+    rows.push(line);
+  }
+
+  return rows;
+}
+
+// ── OSCILLOSCOPE RENDER ────────────────────────────
+
+function findTrigger(timeData) {
+  const threshold = 0.01;
+  for (let i = 1; i < timeData.length - SPEC_W * 4; i++) {
+    if (timeData[i - 1] <= threshold && timeData[i] > threshold) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+function renderScope(timeData) {
+  const grid = Array.from({ length: SPEC_H }, () => new Array(SPEC_W).fill(' '));
+
+  if (timeData && timeData.length > 0) {
+    const trigger = findTrigger(timeData);
+    const available = timeData.length - trigger;
+    const step = Math.max(1, Math.floor(available / SPEC_W));
+    const centerY = (SPEC_H - 1) / 2;
+
+    let prevRow = -1;
+    for (let col = 0; col < SPEC_W; col++) {
+      const idx = trigger + col * step;
+      if (idx >= timeData.length) break;
+
+      const sample = timeData[idx];
+      const rowF = centerY - sample * centerY;
+      const r = Math.round(Math.max(0, Math.min(SPEC_H - 1, rowF)));
+
+      grid[r][col] = '█';
+
+      if (prevRow >= 0 && Math.abs(r - prevRow) > 1) {
+        const from = Math.min(r, prevRow) + 1;
+        const to = Math.max(r, prevRow);
+        for (let fill = from; fill < to; fill++) {
+          if (grid[fill][col] === ' ') grid[fill][col] = '│';
+        }
+      }
+      prevRow = r;
+    }
+  }
+
+  // Center reference line
+  const midRow = Math.floor(SPEC_H / 2);
+  for (let col = 0; col < SPEC_W; col++) {
+    if (grid[midRow][col] === ' ') grid[midRow][col] = '·';
+  }
+
+  return grid.map(r => r.join(''));
+}
+
+// ── SPECTROGRAM RENDER ─────────────────────────────
+
+function renderGram(freqData) {
+  if (freqData && tick % 3 === 0) {
+    const slice = new Float32Array(SPEC_W);
+    for (let i = 0; i < SPEC_W; i++) {
+      const { bin0, bin1 } = bands[i];
+      let max = 0;
+      for (let b = bin0; b <= bin1; b++) {
+        if (b < freqData.length && freqData[b] > max) max = freqData[b];
+      }
+      slice[i] = max / 255;
+    }
+    gramHistory.push(slice);
+    if (gramHistory.length > SPEC_H) gramHistory.shift();
+  }
+
+  const rows = [];
+  for (let row = 0; row < SPEC_H; row++) {
+    const histIdx = row - (SPEC_H - gramHistory.length);
+    if (histIdx < 0 || histIdx >= gramHistory.length) {
+      rows.push(' '.repeat(SPEC_W));
+      continue;
+    }
+    const slice = gramHistory[histIdx];
+    let line = '';
+    for (let col = 0; col < SPEC_W; col++) {
+      const level = slice[col];
+      const idx = Math.min(GRAM_CHARS.length - 1, Math.floor(level * GRAM_CHARS.length));
+      line += GRAM_CHARS[idx];
+    }
+    rows.push(line);
+  }
+
+  return rows;
+}
+
+// ── LISSAJOUS RENDER ───────────────────────────────
+
+function renderLissajous() {
+  if (!lissGrid) lissGrid = new Float32Array(SPEC_H * SPEC_W);
+
+  // Decay persistence
+  for (let i = 0; i < lissGrid.length; i++) {
+    lissGrid[i] *= LISS_DECAY;
+  }
+
+  // Plot new samples from L/R analysers
+  if (active && !frozen && analyserL && analyserR) {
+    const bufLen = analyserL.fftSize;
+    const dataL = new Float32Array(bufLen);
+    const dataR = new Float32Array(bufLen);
+    analyserL.getFloatTimeDomainData(dataL);
+    analyserR.getFloatTimeDomainData(dataR);
+
+    // Rotated 45°: X = (R-L)/√2 (side), Y = (L+R)/√2 (mid)
+    for (let i = 0; i < bufLen; i += 2) {
+      const l = dataL[i];
+      const r = dataR[i];
+      const x = (r - l) * 0.707;
+      const y = (l + r) * 0.707;
+
+      const gx = Math.round((x + 1) / 2 * (SPEC_W - 1));
+      const gy = Math.round((1 - (y + 1) / 2) * (SPEC_H - 1));
+
+      if (gx >= 0 && gx < SPEC_W && gy >= 0 && gy < SPEC_H) {
+        lissGrid[gy * SPEC_W + gx] = Math.min(1, lissGrid[gy * SPEC_W + gx] + 0.12);
+      }
+    }
+  }
+
+  // Render grid with reference crosshair
+  const CHARS = [' ', '·', '░', '▒', '▓', '█'];
+  const rows = [];
+  const midX = Math.floor(SPEC_W / 2);
+  const midY = Math.floor(SPEC_H / 2);
+
+  for (let row = 0; row < SPEC_H; row++) {
+    let line = '';
+    for (let col = 0; col < SPEC_W; col++) {
+      const val = lissGrid[row * SPEC_W + col];
+
+      if (val > 0.01) {
+        const idx = Math.min(CHARS.length - 1, Math.floor(val * CHARS.length));
+        line += CHARS[idx];
+      } else if (col === midX && row === midY) {
+        line += '┼';
+      } else if (col === midX) {
+        line += '│';
+      } else if (row === midY) {
+        line += '─';
+      } else {
+        line += ' ';
+      }
+    }
+    rows.push(line);
+  }
+
+  return rows;
+}
+
+// ── VU METER RENDER ────────────────────────────────
+
+function renderVU() {
+  const rows = [];
+
+  const rmsL = vuNeedleL / 4;
+  const rmsR = vuNeedleR / 4;
+  const dbL = rmsL > 0.0001 ? 20 * Math.log10(rmsL) : -40;
+  const dbR = rmsR > 0.0001 ? 20 * Math.log10(rmsR) : -40;
+
+  const minDb = vuRangeMin;
+  const maxDb = 3;
+  const dbSpan = maxDb - minDb;
+  const clampedDbL = Math.max(minDb, Math.min(maxDb, dbL));
+  const clampedDbR = Math.max(minDb, Math.min(maxDb, dbR));
+
+  const meterW = SPEC_W - 2;
+
+  function dbToPos(d) {
+    const t = (d - minDb) / dbSpan;
+    return Math.round(Math.pow(t, 0.5) * (meterW - 1));
+  }
+
+  // Adaptive marks based on visible range
+  const marks = [];
+  if (dbSpan > 12) {
+    const std = [-20, -10, -7, -5, -3, 0, 1, 2, 3];
+    for (const d of std) {
+      if (d >= minDb && d <= maxDb) {
+        marks.push({ db: d, lbl: d > 0 ? '+' + d : d === 0 ? '0' : String(Math.abs(d)) });
+      }
+    }
+  } else if (dbSpan > 6) {
+    for (let d = Math.ceil(minDb); d <= maxDb; d++) {
+      if (d % 2 === 0 || d === 0 || d === Math.ceil(minDb) || d === maxDb) {
+        marks.push({ db: d, lbl: d > 0 ? '+' + d : d === 0 ? '0' : String(Math.abs(d)) });
+      }
+    }
+  } else {
+    for (let d = Math.ceil(minDb); d <= maxDb; d++) {
+      marks.push({ db: d, lbl: d > 0 ? '+' + d : d === 0 ? '0' : String(Math.abs(d)) });
+    }
+  }
+
+  // Scale labels with collision detection
+  const labelLine = new Array(meterW).fill(' ');
+  for (const m of marks) {
+    const p = dbToPos(m.db);
+    const start = p - Math.floor(m.lbl.length / 2);
+    let ok = true;
+    for (let j = Math.max(0, start - 1); j < Math.min(meterW, start + m.lbl.length + 1); j++) {
+      if (labelLine[j] !== ' ') { ok = false; break; }
+    }
+    if (ok && start >= 0 && start + m.lbl.length <= meterW) {
+      for (let j = 0; j < m.lbl.length; j++) labelLine[start + j] = m.lbl[j];
+    }
+  }
+
+  // Tick marks
+  const tickLine = new Array(meterW).fill('─');
+  for (const m of marks) {
+    const p = dbToPos(m.db);
+    if (p >= 0 && p < meterW) tickLine[p] = '┼';
+  }
+
+  // L needle
+  const needlePosL = dbToPos(clampedDbL);
+  const needleLineL = new Array(meterW).fill(' ');
+  if (needlePosL >= 0 && needlePosL < meterW) {
+    if (needlePosL > 0) needleLineL[needlePosL - 1] = '◄';
+    if (needlePosL < meterW - 1) needleLineL[needlePosL + 1] = '►';
+  }
+
+  // R needle
+  const needlePosR = dbToPos(clampedDbR);
+  const needleLineR = new Array(meterW).fill(' ');
+  if (needlePosR >= 0 && needlePosR < meterW) {
+    if (needlePosR > 0) needleLineR[needlePosR - 1] = '◄';
+    if (needlePosR < meterW - 1) needleLineR[needlePosR + 1] = '►';
+  }
+
+  // VU label centered
+  const vuLabel = 'V U';
+  const vuStart = Math.floor((meterW - vuLabel.length) / 2);
+  const vuLine = new Array(meterW).fill(' ');
+  for (let i = 0; i < vuLabel.length; i++) vuLine[vuStart + i] = vuLabel[i];
+
+  const tickStr = tickLine.join('');
+  const contentLines = [
+    ' ' + vuLine.join('') + ' ',
+    ' ' + labelLine.join('') + ' ',
+    'L' + tickStr + ' ',
+    ' ' + needleLineL.join('') + ' ',
+    'R' + tickStr + ' ',
+    ' ' + needleLineR.join('') + ' ',
+  ];
+
+  const topPad = Math.floor((SPEC_H - contentLines.length) / 2);
+  for (let i = 0; i < SPEC_H; i++) {
+    if (i >= topPad && i < topPad + contentLines.length) {
+      rows.push(contentLines[i - topPad]);
+    } else {
+      rows.push(' '.repeat(SPEC_W));
+    }
+  }
+
+  return rows;
+}
+
+// ── QUAD MODE ──────────────────────────────────────
+
+function initMiniBands() {
+  const minFreq = 25;
+  const maxFreq = Math.min(20000, sampleRate / 2);
+  miniBands = [];
+  miniPeaks = new Float32Array(QUAD_W).fill(0);
+  const logMin = Math.log10(minFreq);
+  const logMax = Math.log10(maxFreq);
+  for (let i = 0; i < QUAD_W; i++) {
+    const f0 = Math.pow(10, logMin + i * (logMax - logMin) / QUAD_W);
+    const f1 = Math.pow(10, logMin + (i + 1) * (logMax - logMin) / QUAD_W);
+    const b0 = Math.max(0, Math.round(f0 * fftSize / sampleRate));
+    const b1 = Math.min(fftSize / 2 - 1, Math.round(f1 * fftSize / sampleRate));
+    miniBands.push({ bin0: b0, bin1: Math.max(b0, b1) });
+  }
+}
+
+function miniSpectrum(freqData) {
+  const rows = [];
+  const levels = new Float32Array(QUAD_W);
+  if (!miniPeaks) miniPeaks = new Float32Array(QUAD_W).fill(0);
+  if (freqData) {
+    for (let i = 0; i < QUAD_W; i++) {
+      const { bin0, bin1 } = miniBands[i];
+      let max = 0;
+      for (let b = bin0; b <= bin1; b++) {
+        if (b < freqData.length && freqData[b] > max) max = freqData[b];
+      }
+      levels[i] = max / 255;
+      miniPeaks[i] = levels[i] >= miniPeaks[i] ? levels[i] : Math.max(0, miniPeaks[i] - 0.004);
+    }
+  }
+  for (let row = 0; row < QUAD_H; row++) {
+    let line = '';
+    for (let band = 0; band < QUAD_W; band++) {
+      const bh = levels[band] * QUAD_H;
+      const rb = QUAD_H - 1 - row;
+      if (rb < Math.floor(bh)) line += '█';
+      else if (rb === Math.floor(bh)) line += BLOCKS[Math.round((bh - Math.floor(bh)) * 8)];
+      else {
+        const pr = Math.floor(miniPeaks[band] * QUAD_H);
+        line += (rb === pr && miniPeaks[band] > 0.02 && miniPeaks[band] > levels[band] + 0.02) ? '─' : ' ';
+      }
+    }
+    rows.push(line);
+  }
+  return rows;
+}
+
+function miniScope(timeData) {
+  const grid = Array.from({ length: QUAD_H }, () => new Array(QUAD_W).fill(' '));
+  if (timeData && timeData.length > 0) {
+    const trigger = findTrigger(timeData);
+    const step = Math.max(1, Math.floor((timeData.length - trigger) / QUAD_W));
+    const cy = (QUAD_H - 1) / 2;
+    let prev = -1;
+    for (let col = 0; col < QUAD_W; col++) {
+      const idx = trigger + col * step;
+      if (idx >= timeData.length) break;
+      const r = Math.round(Math.max(0, Math.min(QUAD_H - 1, cy - timeData[idx] * cy)));
+      grid[r][col] = '█';
+      if (prev >= 0 && Math.abs(r - prev) > 1) {
+        for (let f = Math.min(r, prev) + 1; f < Math.max(r, prev); f++) {
+          if (grid[f][col] === ' ') grid[f][col] = '│';
+        }
+      }
+      prev = r;
+    }
+  }
+  const mid = Math.floor(QUAD_H / 2);
+  for (let c = 0; c < QUAD_W; c++) if (grid[mid][c] === ' ') grid[mid][c] = '·';
+  return grid.map(r => r.join(''));
+}
+
+function miniGram(freqData) {
+  if (freqData && tick % 3 === 0) {
+    const slice = new Float32Array(QUAD_W);
+    for (let i = 0; i < QUAD_W; i++) {
+      const { bin0, bin1 } = miniBands[i];
+      let max = 0;
+      for (let b = bin0; b <= bin1; b++) {
+        if (b < freqData.length && freqData[b] > max) max = freqData[b];
+      }
+      slice[i] = max / 255;
+    }
+    miniGramHistory.push(slice);
+    if (miniGramHistory.length > QUAD_H) miniGramHistory.shift();
+  }
+  const rows = [];
+  for (let row = 0; row < QUAD_H; row++) {
+    const hi = row - (QUAD_H - miniGramHistory.length);
+    if (hi < 0 || hi >= miniGramHistory.length) { rows.push(' '.repeat(QUAD_W)); continue; }
+    let line = '';
+    for (let c = 0; c < QUAD_W; c++) {
+      const level = miniGramHistory[hi][c];
+      line += GRAM_CHARS[Math.min(GRAM_CHARS.length - 1, Math.floor(level * GRAM_CHARS.length))];
+    }
+    rows.push(line);
+  }
+  return rows;
+}
+
+function miniLissajous() {
+  if (!miniLissGrid) miniLissGrid = new Float32Array(QUAD_H * QUAD_W);
+  for (let i = 0; i < miniLissGrid.length; i++) miniLissGrid[i] *= LISS_DECAY;
+  if (active && !frozen && analyserL && analyserR) {
+    const bufLen = analyserL.fftSize;
+    const dL = new Float32Array(bufLen);
+    const dR = new Float32Array(bufLen);
+    analyserL.getFloatTimeDomainData(dL);
+    analyserR.getFloatTimeDomainData(dR);
+    for (let i = 0; i < bufLen; i += 2) {
+      const x = (dR[i] - dL[i]) * 0.707;
+      const y = (dL[i] + dR[i]) * 0.707;
+      const gx = Math.round((x + 1) / 2 * (QUAD_W - 1));
+      const gy = Math.round((1 - (y + 1) / 2) * (QUAD_H - 1));
+      if (gx >= 0 && gx < QUAD_W && gy >= 0 && gy < QUAD_H) {
+        miniLissGrid[gy * QUAD_W + gx] = Math.min(1, miniLissGrid[gy * QUAD_W + gx] + 0.12);
+      }
+    }
+  }
+  const CHARS = [' ', '·', '░', '▒', '▓', '█'];
+  const rows = [];
+  const mx = Math.floor(QUAD_W / 2), my = Math.floor(QUAD_H / 2);
+  for (let row = 0; row < QUAD_H; row++) {
+    let line = '';
+    for (let col = 0; col < QUAD_W; col++) {
+      const val = miniLissGrid[row * QUAD_W + col];
+      if (val > 0.01) line += CHARS[Math.min(CHARS.length - 1, Math.floor(val * CHARS.length))];
+      else if (col === mx && row === my) line += '┼';
+      else if (col === mx) line += '│';
+      else if (row === my) line += '─';
+      else line += ' ';
+    }
+    rows.push(line);
+  }
+  return rows;
+}
+
+// ── QUAD VU METER ─────────────────────────────────
+
+function renderQuadVU() {
+  const meterW = 2 * QUAD_W;
+
+  const rmsL = vuNeedleL / 4;
+  const rmsR = vuNeedleR / 4;
+  const dbL = rmsL > 0.0001 ? 20 * Math.log10(rmsL) : -40;
+  const dbR = rmsR > 0.0001 ? 20 * Math.log10(rmsR) : -40;
+
+  const minDb = -20, maxDb = 3, dbSpan = 23;
+  const clampedDbL = Math.max(minDb, Math.min(maxDb, dbL));
+  const clampedDbR = Math.max(minDb, Math.min(maxDb, dbR));
+
+  function dbToPos(d) {
+    const t = (d - minDb) / dbSpan;
+    return Math.round(Math.pow(t, 0.5) * (meterW - 1));
+  }
+
+  const marks = [];
+  const std = [-20, -10, -7, -5, -3, 0, 1, 2, 3];
+  for (const d of std) {
+    marks.push({ db: d, lbl: d > 0 ? '+' + d : d === 0 ? '0' : String(Math.abs(d)) });
+  }
+
+  const labelLine = new Array(meterW).fill(' ');
+  for (const m of marks) {
+    const p = dbToPos(m.db);
+    const start = p - Math.floor(m.lbl.length / 2);
+    let ok = true;
+    for (let j = Math.max(0, start - 1); j < Math.min(meterW, start + m.lbl.length + 1); j++) {
+      if (labelLine[j] !== ' ') { ok = false; break; }
+    }
+    if (ok && start >= 0 && start + m.lbl.length <= meterW) {
+      for (let j = 0; j < m.lbl.length; j++) labelLine[start + j] = m.lbl[j];
+    }
+  }
+
+  const tickLine = new Array(meterW).fill('─');
+  for (const m of marks) {
+    const p = dbToPos(m.db);
+    if (p >= 0 && p < meterW) tickLine[p] = '┼';
+  }
+
+  const needlePosL = dbToPos(clampedDbL);
+  const needleLineL = new Array(meterW).fill(' ');
+  if (needlePosL >= 0 && needlePosL < meterW) {
+    if (needlePosL > 0) needleLineL[needlePosL - 1] = '◄';
+    if (needlePosL < meterW - 1) needleLineL[needlePosL + 1] = '►';
+  }
+
+  const needlePosR = dbToPos(clampedDbR);
+  const needleLineR = new Array(meterW).fill(' ');
+  if (needlePosR >= 0 && needlePosR < meterW) {
+    if (needlePosR > 0) needleLineR[needlePosR - 1] = '◄';
+    if (needlePosR < meterW - 1) needleLineR[needlePosR + 1] = '►';
+  }
+
+  const tickStr = tickLine.join('');
+  return [
+    '  ' + labelLine.join('') + '  ',
+    'L ' + tickStr + '  ',
+    '  ' + needleLineL.join('') + '  ',
+    'R ' + tickStr + '  ',
+    '  ' + needleLineR.join('') + '  ',
+  ];
+}
+
+// ── MAIN RENDER LOOP ───────────────────────────────
+
+function render() {
+  tick++;
+
+  // VU smoothing
+  vuL += (rawVuL - vuL) * 0.25;
+  vuR += (rawVuR - vuR) * 0.25;
+
+  // Get audio data
+  let freqData = null;
+  let timeData = null;
+
+  if (active && analyserNode && !frozen) {
+    freqData = new Uint8Array(analyserNode.frequencyBinCount);
+    analyserNode.getByteFrequencyData(freqData);
+    timeData = new Float32Array(analyserNode.fftSize);
+    analyserNode.getFloatTimeDomainData(timeData);
+
+    // Stereo VU from split analysers
+    if (analyserL && analyserR) {
+      const bufLen = analyserL.fftSize;
+      const dL = new Float32Array(bufLen);
+      const dR = new Float32Array(bufLen);
+      analyserL.getFloatTimeDomainData(dL);
+      analyserR.getFloatTimeDomainData(dR);
+      let sL = 0, sR = 0;
+      for (let i = 0; i < bufLen; i++) {
+        sL += dL[i] * dL[i];
+        sR += dR[i] * dR[i];
+      }
+      rawVuL = Math.sqrt(sL / bufLen) * 4;
+      rawVuR = Math.sqrt(sR / bufLen) * 4;
+    }
+
+    // Peak level from time-domain data
+    let maxAbs = 0;
+    for (let i = 0; i < timeData.length; i++) {
+      const a = Math.abs(timeData[i]);
+      if (a > maxAbs) maxAbs = a;
+    }
+    peakLevel = maxAbs;
+
+    const currentDb = maxAbs > 0.0001 ? 20 * Math.log10(maxAbs) : -Infinity;
+    if (currentDb > peakHoldDb) {
+      peakHoldDb = currentDb;
+      peakHoldTimer = 90;
+    } else if (peakHoldTimer > 0) {
+      peakHoldTimer--;
+    } else {
+      peakHoldDb = currentDb;
+    }
+  }
+
+  if (!active) {
+    rawVuL = 0;
+    rawVuR = 0;
+    peakLevel = 0;
+    peakHoldDb = -Infinity;
+  }
+
+  // VU needle ballistics (slow rise, slower fall — like a real meter movement)
+  const rawNeedle = Math.max(rawVuL, rawVuR);
+  if (rawNeedle > vuNeedleVal) {
+    vuNeedleVal += (rawNeedle - vuNeedleVal) * 0.12;
+  } else {
+    vuNeedleVal += (rawNeedle - vuNeedleVal) * 0.04;
+  }
+  if (rawVuL > vuNeedleL) {
+    vuNeedleL += (rawVuL - vuNeedleL) * 0.12;
+  } else {
+    vuNeedleL += (rawVuL - vuNeedleL) * 0.04;
+  }
+  if (rawVuR > vuNeedleR) {
+    vuNeedleR += (rawVuR - vuNeedleR) * 0.12;
+  } else {
+    vuNeedleR += (rawVuR - vuNeedleR) * 0.04;
+  }
+
+  // ── Build top section (fixed font) ──
+
+  const topLines = [];
+  topLines.push('╔' + '═'.repeat(W) + '╗');
+  topLines.push(pad(''));
+  topLines.push(center('B B  M E T E R S  v1.0'));
+  topLines.push(pad(''));
+  topLines.push('╠' + '═'.repeat(W) + '╣');
+  topLines.push(pad(''));
+
+  // ── Build viz section (variable font) ──
+
+  const vizLines = [];
+
+  if (mode === 'all') {
+    vizLines.push('┌' + '─'.repeat(QUAD_W) + '─┬' + '─'.repeat(QUAD_W) + '┐');
+    const tl = miniSpectrum(freqData);
+    const tr = miniScope(timeData);
+    for (let i = 0; i < QUAD_H; i++) {
+      vizLines.push('│' + tl[i] + ' │' + tr[i] + '│');
+    }
+    vizLines.push('├' + '─'.repeat(QUAD_W) + '─┼' + '─'.repeat(QUAD_W) + '┤');
+    const bl = miniGram(freqData);
+    const br = miniLissajous();
+    for (let i = 0; i < QUAD_H; i++) {
+      vizLines.push('│' + bl[i] + ' │' + br[i] + '│');
+    }
+    vizLines.push('└' + '─'.repeat(QUAD_W) + '─┴' + '─'.repeat(QUAD_W) + '┘');
+    const quadVU = renderQuadVU();
+    for (const row of quadVU) {
+      vizLines.push(row);
+    }
+  } else {
+    vizLines.push('┌' + '─'.repeat(SPEC_W) + '┐');
+
+    let displayRows;
+    switch (mode) {
+      case 'spectrum':  displayRows = renderSpectrum(freqData); break;
+      case 'scope':     displayRows = renderScope(timeData);    break;
+      case 'gram':      displayRows = renderGram(freqData);     break;
+      case 'lissajous': displayRows = renderLissajous();        break;
+      case 'vu':        displayRows = renderVU();               break;
+      default:          displayRows = renderSpectrum(freqData);
+    }
+
+    for (const row of displayRows) {
+      vizLines.push('│' + row + '│');
+    }
+
+    vizLines.push('└' + '─'.repeat(SPEC_W) + '┘');
+  }
+
+  // ── Build bottom section (fixed font) ──
+
+  const bottomLines = [];
+
+  // Axis labels at fixed size — fitted within the meter box width
+  const boxL = 2;           // left edge of box in fixed chars
+  const boxR = W - 2;       // right edge
+  if (mode === 'spectrum' || mode === 'gram') {
+    const ax = new Array(W).fill(' ');
+    ax[boxL] = '0';
+    const logMin = Math.log10(25), logMax = Math.log10(20000);
+    const axStart = boxL + 1;           // first band position
+    const axEnd = boxR - 3;             // last band position (room for Hz)
+    const axRange = axEnd - axStart;
+    const mks = [{f:50,l:'50'},{f:100,l:'100'},{f:250,l:'250'},{f:500,l:'500'},{f:1000,l:'1k'},{f:2000,l:'2k'},{f:5000,l:'5k'},{f:10000,l:'10k'}];
+    for (const m of mks) {
+      const p = axStart + Math.round((Math.log10(m.f) - logMin) / (logMax - logMin) * axRange);
+      const s = p - Math.floor(m.l.length / 2);
+      let ok = true;
+      for (let j = Math.max(0, s-1); j < Math.min(W, s+m.l.length+1); j++) if (ax[j] !== ' ') ok = false;
+      if (ok && s >= boxL && s + m.l.length <= boxR) for (let j = 0; j < m.l.length; j++) ax[s+j] = m.l[j];
+    }
+    ax[boxR - 2] = 'H'; ax[boxR - 1] = 'z';
+    bottomLines.push(pad(ax.join('')));
+  } else if (mode === 'lissajous') {
+    const lAx = new Array(W).fill(' ');
+    lAx[boxL] = '←'; lAx[boxL + 1] = 'L';
+    lAx[Math.floor(W / 2)] = 'M';
+    lAx[boxR - 2] = 'R'; lAx[boxR - 1] = '→';
+    bottomLines.push(pad(lAx.join('')));
+  } else if (mode === 'scope') {
+    const sAx = new Array(W).fill(' ');
+    '← TIME'.split('').forEach((c, i) => sAx[boxL + i] = c);
+    '→'.split('').forEach((c, i) => sAx[boxR - 1 + i] = c);
+    for (let i = boxL + 8; i < boxR - 2; i++) sAx[i] = '─';
+    bottomLines.push(pad(sAx.join('')));
+  } else {
+    bottomLines.push(pad(''));
+  }
+
+  bottomLines.push(pad(''));
+  bottomLines.push(center('L │' + vuBar(vuL) + '│'));
+  bottomLines.push(center('R │' + vuBar(vuR) + '│'));
+  bottomLines.push(pad(''));
+  bottomLines.push('╠' + '─'.repeat(W) + '╣');
+  bottomLines.push(pad(''));
+
+  const devName = getDeviceName();
+  const truncDev = devName.length > 36 ? devName.slice(0, 33) + '...' : devName;
+  bottomLines.push(pad('  INPUT:  ' + truncDev));
+
+  const modeNames = { all: 'ALL', spectrum: 'SPECTRUM', scope: 'SCOPE', gram: 'SPECTROGRAM', lissajous: 'LISSAJOUS', vu: 'VU METER' };
+  const modeLabel = (modeNames[mode] || 'SPECTRUM').padEnd(14);
+  const peakStr = peakHoldDb > -100 ? (peakHoldDb >= 0 ? '+' : '') + peakHoldDb.toFixed(1) : ' -∞';
+  bottomLines.push(pad('  MODE:   ' + modeLabel + 'PEAK:' + peakStr.padStart(6) + ' dB'));
+
+  if (frozen) {
+    bottomLines.push(pad('  STATUS: HOLD'));
+  } else if (active) {
+    bottomLines.push(pad('  STATUS: ACTIVE  FFT: ' + fftSize));
+  } else {
+    bottomLines.push(pad('  STATUS: READY'));
+  }
+
+  if (errorMsg) {
+    bottomLines.push(pad(''));
+    bottomLines.push(pad('  ' + errorMsg));
+  }
+
+  bottomLines.push(pad(''));
+
+  // ── Apply to DOM ──
+
+  document.getElementById('display-top').textContent = topLines.join('\n');
+  document.getElementById('viz').textContent = vizLines.join('\n');
+  document.getElementById('display-bottom').textContent = bottomLines.join('\n');
+  document.getElementById('frame-mid').textContent = '╠' + '═'.repeat(W) + '╣';
+  document.getElementById('frame-bot').textContent = '╚' + '═'.repeat(W) + '╝';
+
+  // Side borders for viz area
+  const vizEl = document.getElementById('viz');
+  const lineH = FIXED_FONT * 1.45;
+  const vizBorderN = Math.ceil(vizEl.clientHeight / lineH) + 1;
+  const vizBorderCol = new Array(vizBorderN).fill('║').join('\n');
+  document.getElementById('viz-border-l').textContent = vizBorderCol;
+  document.getElementById('viz-border-r').textContent = vizBorderCol;
+
+  // Side borders for control panel
+  const panel = document.getElementById('control-panel');
+  const numLines = Math.ceil(panel.clientHeight / lineH) + 1;
+  const borderCol = new Array(numLines).fill('║').join('\n');
+  document.getElementById('border-left').textContent = borderCol;
+  document.getElementById('border-right').textContent = borderCol;
+
+  requestAnimationFrame(render);
+}
+
+// ── AUDIO INIT ─────────────────────────────────────
+
+async function initAudio() {
+  if (audioCtx && analyserNode) return true;
+  try {
+    const constraints = {
+      sampleRate: sampleRate,
+      channelCount: 2,
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false
+    };
+    if (selectedDeviceId) constraints.deviceId = { exact: selectedDeviceId };
+
+    stream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
+    if (!audioCtx) audioCtx = new AudioContext({ sampleRate: sampleRate });
+
+    sourceNode = audioCtx.createMediaStreamSource(stream);
+
+    gainNode = audioCtx.createGain();
+    const gainDb = parseFloat(document.getElementById('gain-slider').value);
+    gainNode.gain.value = Math.pow(10, gainDb / 20);
+
+    analyserNode = audioCtx.createAnalyser();
+    analyserNode.fftSize = fftSize;
+    analyserNode.smoothingTimeConstant = 0.8;
+    analyserNode.minDecibels = -90;
+    analyserNode.maxDecibels = -10;
+
+    splitterNode = audioCtx.createChannelSplitter(2);
+    analyserL = audioCtx.createAnalyser();
+    analyserR = audioCtx.createAnalyser();
+    analyserL.fftSize = 2048;
+    analyserR.fftSize = 2048;
+
+    silentGain = audioCtx.createGain();
+    silentGain.gain.value = 0;
+
+    sourceNode.connect(gainNode);
+    gainNode.connect(analyserNode);
+    gainNode.connect(splitterNode);
+    splitterNode.connect(analyserL, 0);
+    splitterNode.connect(analyserR, 1);
+    analyserNode.connect(silentGain);
+    silentGain.connect(audioCtx.destination);
+
+    if (devices.length === 0) {
+      await populateDevices();
+      navigator.mediaDevices.addEventListener('devicechange', populateDevices);
+    }
+    if (!selectedDeviceId && stream.getAudioTracks().length > 0) {
+      const settings = stream.getAudioTracks()[0].getSettings();
+      if (settings.deviceId) {
+        selectedDeviceId = settings.deviceId;
+        document.getElementById('mic-select').value = selectedDeviceId;
+      }
+    }
+
+    initBands();
+    errorMsg = '';
+    return true;
+  } catch (e) {
+    errorMsg = '?ERR: MIC ACCESS DENIED';
+    return false;
+  }
+}
+
+function teardownAudio() {
+  if (sourceNode) { sourceNode.disconnect(); sourceNode = null; }
+  if (gainNode) { gainNode.disconnect(); gainNode = null; }
+  if (analyserNode) { analyserNode.disconnect(); analyserNode = null; }
+  if (splitterNode) { splitterNode.disconnect(); splitterNode = null; }
+  if (silentGain) { silentGain.disconnect(); silentGain = null; }
+  analyserL = null;
+  analyserR = null;
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+}
+
+// ── CONTROLS ───────────────────────────────────────
+
+async function toggleAudio() {
+  if (active) {
+    teardownAudio();
+    active = false;
+    frozen = false;
+    peaks.fill(0);
+    gramHistory = [];
+    lissGrid = null;
+    miniGramHistory = [];
+    miniLissGrid = null;
+    if (miniPeaks) miniPeaks.fill(0);
+    document.getElementById('btn-start').textContent = '▶ START';
+    document.getElementById('btn-start').classList.remove('active');
+    document.getElementById('btn-hold').disabled = true;
+    document.getElementById('btn-hold').classList.remove('active');
+    document.getElementById('btn-hold').textContent = '❚❚ HOLD';
+    return;
+  }
+
+  const ok = await initAudio();
+  if (!ok) return;
+
+  active = true;
+  document.getElementById('btn-start').textContent = '■ STOP';
+  document.getElementById('btn-start').classList.add('active');
+  document.getElementById('btn-hold').disabled = false;
+}
+
+function toggleHold() {
+  frozen = !frozen;
+  document.getElementById('btn-hold').classList.toggle('active', frozen);
+  document.getElementById('btn-hold').textContent = frozen ? '▶ RESUME' : '❚❚ HOLD';
+}
+
+function changeMode() {
+  mode = document.getElementById('mode-select').value;
+  gramHistory = [];
+  peaks.fill(0);
+  lissGrid = null;
+  miniGramHistory = [];
+  miniLissGrid = null;
+  if (miniPeaks) miniPeaks.fill(0);
+  vuNeedleVal = 0;
+
+  if (mode === 'vu') {
+    document.getElementById('res-slider').value = 1;
+    vuRangeMin = -20;
+    document.getElementById('res-readout').textContent = '23dB';
+  } else {
+    document.getElementById('res-slider').value = 12;
+    document.getElementById('res-readout').textContent = '12px';
+    recalcDimensions(12);
+  }
+}
+
+function changeFFT() {
+  fftSize = parseInt(document.getElementById('fft-select').value);
+  if (analyserNode) analyserNode.fftSize = fftSize;
+  initBands();
+  initMiniBands();
+  peaks = new Float32Array(SPEC_W).fill(0);
+  gramHistory = [];
+  miniGramHistory = [];
+}
+
+function changeGain() {
+  const db = parseFloat(document.getElementById('gain-slider').value);
+  document.getElementById('gain-readout').textContent = (db > 0 ? '+' : '') + db + ' dB';
+  if (gainNode) gainNode.gain.value = Math.pow(10, db / 20);
+}
+
+function resetGain() {
+  document.getElementById('gain-slider').value = 0;
+  changeGain();
+}
+
+function resetRes() {
+  document.getElementById('res-slider').value = mode === 'vu' ? 1 : 12;
+  changeRes();
+}
+
+// ── DEVICE MANAGEMENT ──────────────────────────────
+
+async function populateDevices() {
+  const all = await navigator.mediaDevices.enumerateDevices();
+  devices = all.filter(d => d.kind === 'audioinput');
+  const sel = document.getElementById('mic-select');
+  sel.innerHTML = '';
+  devices.forEach((d, i) => {
+    const opt = document.createElement('option');
+    opt.value = d.deviceId;
+    opt.textContent = d.label || `INPUT ${i + 1}`;
+    sel.appendChild(opt);
+  });
+  if (selectedDeviceId) sel.value = selectedDeviceId;
+  else if (devices.length > 0) {
+    selectedDeviceId = devices[0].deviceId;
+    sel.value = selectedDeviceId;
+  }
+}
+
+async function requestAccess() {
+  try {
+    const ok = await initAudio();
+    if (!ok) return;
+    await populateDevices();
+    navigator.mediaDevices.addEventListener('devicechange', populateDevices);
+    active = true;
+    document.getElementById('btn-start').textContent = '■ STOP';
+    document.getElementById('btn-start').classList.add('active');
+    document.getElementById('btn-hold').disabled = false;
+    errorMsg = '';
+  } catch (e) {
+    errorMsg = '?ERR: MIC ACCESS DENIED';
+  }
+}
+
+async function switchDevice() {
+  selectedDeviceId = document.getElementById('mic-select').value;
+  if (!active) return;
+
+  // Teardown and reinit with new device
+  teardownAudio();
+  const ok = await initAudio();
+  if (ok) {
+    active = true;
+    errorMsg = '';
+  } else {
+    active = false;
+    document.getElementById('btn-start').textContent = '▶ START';
+    document.getElementById('btn-start').classList.remove('active');
+    document.getElementById('btn-hold').disabled = true;
+  }
+}
+
+// ── COLORS ─────────────────────────────────────────
+
+let colorStyleEl = null;
+
+function applyColors() {
+  const bg = document.getElementById('color-bg').value;
+  const txt = document.getElementById('color-text').value;
+  document.body.style.background = bg;
+  document.getElementById('crt').style.background = bg;
+  document.querySelectorAll('.display-text').forEach(el => {
+    el.style.color = txt;
+    el.style.textShadow = `0 0 8px ${txt}55`;
+  });
+  document.querySelectorAll('.btn, #control-panel label, .crt-select').forEach(el => {
+    el.style.color = txt;
+    el.style.borderColor = txt + '88';
+    el.style.textShadow = `0 0 8px ${txt}55`;
+  });
+  document.querySelectorAll('.crt-select option').forEach(el => {
+    el.style.color = txt;
+    el.style.background = bg;
+  });
+  document.getElementById('crt').style.borderColor = txt + '33';
+  document.querySelectorAll('.crt-slider').forEach(el => { el.style.background = txt + '55'; });
+  document.querySelectorAll('.frame-line').forEach(el => {
+    el.style.color = txt;
+    el.style.textShadow = `0 0 8px ${txt}55`;
+  });
+  document.querySelectorAll('input[type="color"]').forEach(el => {
+    el.style.borderColor = txt + '88';
+  });
+  if (!colorStyleEl) {
+    colorStyleEl = document.createElement('style');
+    document.head.appendChild(colorStyleEl);
+  }
+  colorStyleEl.textContent = `
+    .crt-slider::-webkit-slider-thumb { background: ${txt} !important; }
+    .crt-slider::-moz-range-thumb { background: ${txt} !important; }
+    .crt-select { accent-color: ${txt}; }
+  `;
+}
+
+// ── KEYBOARD SHORTCUTS ─────────────────────────────
+
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+
+  switch (e.key.toLowerCase()) {
+    case ' ':
+      e.preventDefault();
+      toggleAudio();
+      break;
+    case 'h':
+      e.preventDefault();
+      if (active) toggleHold();
+      break;
+    case '1':
+      e.preventDefault();
+      document.getElementById('mode-select').value = 'spectrum';
+      changeMode();
+      break;
+    case '2':
+      e.preventDefault();
+      document.getElementById('mode-select').value = 'scope';
+      changeMode();
+      break;
+    case '3':
+      e.preventDefault();
+      document.getElementById('mode-select').value = 'gram';
+      changeMode();
+      break;
+    case '4':
+      e.preventDefault();
+      document.getElementById('mode-select').value = 'lissajous';
+      changeMode();
+      break;
+    case '5':
+      e.preventDefault();
+      document.getElementById('mode-select').value = 'all';
+      changeMode();
+      break;
+    case '6':
+      e.preventDefault();
+      document.getElementById('mode-select').value = 'vu';
+      changeMode();
+      break;
+  }
+});
+
+// Return focus after dropdown interaction
+document.querySelectorAll('select, input[type="range"]').forEach(el => {
+  el.addEventListener('change', () => el.blur());
+});
+
+// ── MOBILE SCALING ─────────────────────────────────
+
+function scaleCrt() {
+  const crt = document.getElementById('crt');
+  crt.style.transform = '';
+  crt.style.transformOrigin = 'top center';
+  const p = 16;
+  const crtW = crt.scrollWidth;
+  const vpW = window.innerWidth;
+  if (crtW + p * 2 > vpW) {
+    crt.style.transform = `scale(${(vpW - p * 2) / crtW})`;
+  }
+}
+window.addEventListener('resize', scaleCrt);
+requestAnimationFrame(scaleCrt);
+
+// ── INIT ───────────────────────────────────────────
+
+recalcDimensions(12);
+requestAnimationFrame(render);
+
+</script>
+</body>
+</html>
