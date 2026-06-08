@@ -298,6 +298,7 @@ const GRAM_CHARS = [' ', '·', '░', '▒', '▓', '█'];
 const LISS_DECAY = 0.92;
 let QUAD_W = 28;
 let QUAD_H = 8;
+let VIZ_ROWS = 36;
 
 // ── STATE ──────────────────────────────────────────
 
@@ -351,22 +352,24 @@ function recalcDimensions(fontSize) {
   const fixedCharH = FIXED_FONT * 1.45;
   const defaultSpecW = W - 6;               // 58 content chars at 12px
   const vizPxW = (defaultSpecW + 2) * fixedCharW;  // ┌ + content + ┐
-  const vizPxH = (21 + 2) * fixedCharH;            // frame top + content + frame bottom (room for ALL+VU)
+  const vizPxH = (23 + 2) * fixedCharH;            // frame top + content + frame bottom (room for ALL+VU+spacer)
 
   // How many chars fit in that fixed box at the new font size
   const vizCharW = fontSize * 0.6;
   const vizCharH = fontSize * 1.0;  // line-height: 1 on viz element
   const totalCols = Math.floor(vizPxW / vizCharW);
   const totalRows = Math.floor(vizPxH / vizCharH);
+  VIZ_ROWS = totalRows;
 
   SPEC_W = Math.max(10, totalCols - 2);
   if (SPEC_W % 2 !== 0) SPEC_W--;
-  SPEC_H = Math.max(4, totalRows - 2);
+  // Cap single-mode height so they don't stretch to fill ALL mode's taller viz box
+  SPEC_H = Math.max(4, Math.min(totalRows - 2, 28));
   if (SPEC_H % 2 !== 0) SPEC_H--;
 
   QUAD_W = Math.floor((SPEC_W - 2) / 2);
-  // QUAD_H sized so ALL mode (2*QUAD_H + 8 VU/border rows) fits in totalRows
-  QUAD_H = Math.max(3, Math.floor((totalRows - 8) / 2));
+  // QUAD_H sized so ALL mode (2*QUAD_H + 9 VU/border/spacer rows) fits in totalRows
+  QUAD_H = Math.max(3, Math.floor((totalRows - 9) / 2));
 
   // Apply variable font + fixed height to viz element (no fixed width — let content size naturally for centering)
   const vizEl = document.getElementById('viz');
@@ -1102,28 +1105,29 @@ function render() {
 
   // ── Build viz section (variable font) ──
 
-  const vizLines = [];
+  const vizContent = [];
 
   if (mode === 'all') {
-    vizLines.push('┌' + '─'.repeat(QUAD_W) + '─┬' + '─'.repeat(QUAD_W) + '┐');
+    vizContent.push('┌' + '─'.repeat(QUAD_W) + '─┬' + '─'.repeat(QUAD_W) + '┐');
     const tl = miniSpectrum(freqData);
     const tr = miniScope(timeData);
     for (let i = 0; i < QUAD_H; i++) {
-      vizLines.push('│' + tl[i] + ' │' + tr[i] + '│');
+      vizContent.push('│' + tl[i] + ' │' + tr[i] + '│');
     }
-    vizLines.push('├' + '─'.repeat(QUAD_W) + '─┼' + '─'.repeat(QUAD_W) + '┤');
+    vizContent.push('├' + '─'.repeat(QUAD_W) + '─┼' + '─'.repeat(QUAD_W) + '┤');
     const bl = miniGram(freqData);
     const br = miniLissajous();
     for (let i = 0; i < QUAD_H; i++) {
-      vizLines.push('│' + bl[i] + ' │' + br[i] + '│');
+      vizContent.push('│' + bl[i] + ' │' + br[i] + '│');
     }
-    vizLines.push('└' + '─'.repeat(QUAD_W) + '─┴' + '─'.repeat(QUAD_W) + '┘');
+    vizContent.push('└' + '─'.repeat(QUAD_W) + '─┴' + '─'.repeat(QUAD_W) + '┘');
+    vizContent.push(' '.repeat(2 * QUAD_W + 3));  // spacer between quad box and VU
     const quadVU = renderQuadVU();
     for (const row of quadVU) {
-      vizLines.push(row);
+      vizContent.push(row);
     }
   } else {
-    vizLines.push('┌' + '─'.repeat(SPEC_W) + '┐');
+    vizContent.push('┌' + '─'.repeat(SPEC_W) + '┐');
 
     let displayRows;
     switch (mode) {
@@ -1136,58 +1140,62 @@ function render() {
     }
 
     for (const row of displayRows) {
-      vizLines.push('│' + row + '│');
+      vizContent.push('│' + row + '│');
     }
 
-    vizLines.push('└' + '─'.repeat(SPEC_W) + '┘');
+    vizContent.push('└' + '─'.repeat(SPEC_W) + '┘');
+
+    // Axis labels right under the box (in viz font so they align)
+    const vizW = SPEC_W + 2;
+    if (mode === 'spectrum' || mode === 'gram') {
+      const ax = new Array(vizW).fill(' ');
+      ax[1] = '0';
+      const logMin = Math.log10(25), logMax = Math.log10(20000);
+      const axStart = 2;
+      const axEnd = vizW - 3;
+      const axRange = axEnd - axStart;
+      const mks = [{f:50,l:'50'},{f:100,l:'100'},{f:250,l:'250'},{f:500,l:'500'},{f:1000,l:'1k'},{f:2000,l:'2k'},{f:5000,l:'5k'},{f:10000,l:'10k'}];
+      for (const m of mks) {
+        const p = axStart + Math.round((Math.log10(m.f) - logMin) / (logMax - logMin) * axRange);
+        const s = p - Math.floor(m.l.length / 2);
+        let ok = true;
+        for (let j = Math.max(0, s-1); j < Math.min(vizW, s+m.l.length+1); j++) if (ax[j] !== ' ') ok = false;
+        if (ok && s >= 1 && s + m.l.length <= vizW - 1) for (let j = 0; j < m.l.length; j++) ax[s+j] = m.l[j];
+      }
+      ax[vizW - 3] = 'H'; ax[vizW - 2] = 'z';
+      vizContent.push(ax.join(''));
+    } else if (mode === 'lissajous') {
+      const lAx = new Array(vizW).fill(' ');
+      lAx[1] = '←'; lAx[2] = 'L';
+      lAx[Math.floor(vizW / 2)] = 'M';
+      lAx[vizW - 3] = 'R'; lAx[vizW - 2] = '→';
+      vizContent.push(lAx.join(''));
+    } else if (mode === 'scope') {
+      const sAx = new Array(vizW).fill(' ');
+      '← TIME'.split('').forEach((c, i) => sAx[1 + i] = c);
+      sAx[vizW - 2] = '→';
+      for (let i = 8; i < vizW - 3; i++) sAx[i] = '─';
+      vizContent.push(sAx.join(''));
+    } else {
+      vizContent.push(' '.repeat(vizW));
+    }
   }
+
+  // Pad bottom of viz so content sits at top, remaining space accounts for VU in ALL mode
+  const vizLines = [];
+  for (const line of vizContent) vizLines.push(line);
+  const padStr = ' '.repeat(vizContent.length > 0 ? vizContent[0].length : 1);
+  while (vizLines.length < VIZ_ROWS) vizLines.push(padStr);
 
   // ── Build bottom section (fixed font) ──
 
   const bottomLines = [];
 
-  // Axis labels at fixed size — fitted within the meter box width
-  const boxL = 2;           // left edge of box in fixed chars
-  const boxR = W - 2;       // right edge
-  if (mode === 'spectrum' || mode === 'gram') {
-    const ax = new Array(W).fill(' ');
-    ax[boxL] = '0';
-    const logMin = Math.log10(25), logMax = Math.log10(20000);
-    const axStart = boxL + 1;           // first band position
-    const axEnd = boxR - 3;             // last band position (room for Hz)
-    const axRange = axEnd - axStart;
-    const mks = [{f:50,l:'50'},{f:100,l:'100'},{f:250,l:'250'},{f:500,l:'500'},{f:1000,l:'1k'},{f:2000,l:'2k'},{f:5000,l:'5k'},{f:10000,l:'10k'}];
-    for (const m of mks) {
-      const p = axStart + Math.round((Math.log10(m.f) - logMin) / (logMax - logMin) * axRange);
-      const s = p - Math.floor(m.l.length / 2);
-      let ok = true;
-      for (let j = Math.max(0, s-1); j < Math.min(W, s+m.l.length+1); j++) if (ax[j] !== ' ') ok = false;
-      if (ok && s >= boxL && s + m.l.length <= boxR) for (let j = 0; j < m.l.length; j++) ax[s+j] = m.l[j];
-    }
-    ax[boxR - 2] = 'H'; ax[boxR - 1] = 'z';
-    bottomLines.push(pad(ax.join('')));
-  } else if (mode === 'lissajous') {
-    const lAx = new Array(W).fill(' ');
-    lAx[boxL] = '←'; lAx[boxL + 1] = 'L';
-    lAx[Math.floor(W / 2)] = 'M';
-    lAx[boxR - 2] = 'R'; lAx[boxR - 1] = '→';
-    bottomLines.push(pad(lAx.join('')));
-  } else if (mode === 'scope') {
-    const sAx = new Array(W).fill(' ');
-    '← TIME'.split('').forEach((c, i) => sAx[boxL + i] = c);
-    '→'.split('').forEach((c, i) => sAx[boxR - 1 + i] = c);
-    for (let i = boxL + 8; i < boxR - 2; i++) sAx[i] = '─';
-    bottomLines.push(pad(sAx.join('')));
-  } else {
-    bottomLines.push(pad(''));
-  }
-
-  bottomLines.push(pad(''));
   bottomLines.push(center('L │' + vuBar(vuL) + '│'));
   bottomLines.push(center('R │' + vuBar(vuR) + '│'));
   bottomLines.push(pad(''));
-  bottomLines.push('╠' + '─'.repeat(W) + '╣');
   bottomLines.push(pad(''));
+  bottomLines.push('╠' + '─'.repeat(W) + '╣');
 
   const devName = getDeviceName();
   const truncDev = devName.length > 36 ? devName.slice(0, 33) + '...' : devName;
