@@ -145,12 +145,7 @@ body {
   background: rgba(0, 191, 255, 0.08);
 }
 
-.btn.dub-active {
-  color: #FFA500;
-  border-color: #FFA500;
-  text-shadow: 0 0 12px rgba(255, 165, 0, 0.5);
-  animation: pulse 1s ease-in-out infinite;
-}
+
 
 #file-input { display: none; }
 
@@ -417,9 +412,7 @@ let playSpeed = 1.0;
 let recordSpeed = 1.0;  // speed the tape was recorded at
 let eraseArmed = false;
 let eraseTimeout = null;
-let overdubMode = false;
-let overdubChunks = [];
-let overdubStartOffset = 0;
+let punchInOffset = 0;  // seconds into tape where punch-in started
 
 const REELS = [
   ['╭───────╮','│   │   │','│───●───│','│   │   │','╰───────╯'],
@@ -473,7 +466,7 @@ function render() {
   tick++;
 
   // Reel animation: spin during recording, playback, and scrubbing
-  const reelInterval = (state === 'playing' || scrubbing || (state === 'recording' && overdubMode)) ? Math.max(2, Math.round(7 / (scrubbing ? getScrubSpeed() : playSpeed))) : 7;
+  const reelInterval = (state === 'playing' || scrubbing) ? Math.max(2, Math.round(7 / (scrubbing ? getScrubSpeed() : playSpeed))) : 7;
   if ((state === 'recording' || state === 'playing' || scrubbing) && tick % reelInterval === 0) {
     reelFrame = (reelFrame + 1) % 4;
   }
@@ -483,7 +476,7 @@ function render() {
   vuR += (rawVuR - vuR) * 0.25;
 
   // Playback/scrub VU from analyser nodes
-  if ((state === 'playing' || scrubbing || (state === 'recording' && overdubMode)) && playbackAnalyserL && playbackAnalyserR) {
+  if ((state === 'playing' || scrubbing) && playbackAnalyserL && playbackAnalyserR) {
     const bufLen = playbackAnalyserL.fftSize;
     const dataL = new Float32Array(bufLen);
     const dataR = new Float32Array(bufLen);
@@ -507,14 +500,6 @@ function render() {
     }
   }
 
-  // Auto-stop overdub when tape ends (non-looped)
-  if (state === 'recording' && overdubMode && !loopEnabled) {
-    const pos = overdubStartOffset + (Date.now() - playbackStartTime) / 1000 * effectiveSpeed;
-    if (pos >= playbackDuration) {
-      stopAll();
-    }
-  }
-
   // Auto-stop scrub at boundaries
   if (scrubbing) {
     const scrubElapsed = (Date.now() - scrubStartTime) / 1000;
@@ -526,11 +511,7 @@ function render() {
 
   // Time display
   let t;
-  if (state === 'recording' && overdubMode) {
-    let pos = overdubStartOffset + (Date.now() - playbackStartTime) / 1000 * effectiveSpeed;
-    if (loopEnabled && playbackDuration > 0) pos = pos % playbackDuration;
-    t = fmtTime(Math.min(pos, playbackDuration) * 1000);
-  } else if (state === 'recording') {
+  if (state === 'recording') {
     t = fmtTime(elapsed + Date.now() - recordStart);
   } else if (scrubbing) {
     const scrubElapsed = (Date.now() - scrubStartTime) / 1000;
@@ -569,7 +550,7 @@ function render() {
         statusLine2 = fmtStr;
         break;
       case 'recording':
-        statusTxt = overdubMode ? '● DUB' : '● REC';
+        statusTxt = '● REC';
         statusLine2 = fmtStr;
         break;
       case 'stopped':
@@ -656,7 +637,6 @@ function updateButtons() {
   const speedSel = document.getElementById('speed-select');
 
   btnRec.classList.remove('rec-active');
-  btnRec.classList.remove('dub-active');
   btnPlay.classList.remove('play-active');
   btnRec.textContent = '● REC';
 
@@ -691,12 +671,7 @@ function updateButtons() {
       rateSel.disabled  = true;
       bitsSel.disabled  = true;
       speedSel.disabled = true;
-      if (overdubMode) {
-        btnRec.textContent = '● DUB';
-        btnRec.classList.add('dub-active');
-      } else {
-        btnRec.classList.add('rec-active');
-      }
+      btnRec.classList.add('rec-active');
       break;
 
     case 'stopped':
@@ -774,11 +749,7 @@ function onAudioProcess(e) {
       interleaved[i * 2] = left[i];
       interleaved[i * 2 + 1] = right[i];
     }
-    if (overdubMode) {
-      overdubChunks.push(interleaved);
-    } else {
-      chunks.push(interleaved);
-    }
+    chunks.push(interleaved);
   }
 }
 
@@ -878,22 +849,12 @@ async function initAudio() {
 // ── RECORD ──────────────────────────────────────────────
 
 async function toggleRecord() {
-  if (state === 'recording' && overdubMode) return;
+  if (state === 'recording') return;  // already recording
   const ok = await initAudio();
   if (!ok) return;
   if (audioCtx.state === 'suspended') await audioCtx.resume();
 
-  // From recording: stop recording, fall through to overdub
-  if (state === 'recording') {
-    elapsed += Date.now() - recordStart;
-    state = 'stopped';
-    rawVuL = 0;
-    rawVuR = 0;
-    calcPlaybackDuration();
-    playbackOffset = 0;
-  }
-
-  // From playing: capture position, stop playback, fall through to overdub
+  // From playing: capture position, stop playback, fall through to punch-in
   if (state === 'playing') {
     const eff = playSpeed / recordSpeed;
     const playedFor = (Date.now() - playbackStartTime) / 1000 * eff;
@@ -904,37 +865,23 @@ async function toggleRecord() {
     rawVuR = 0;
   }
 
-  // From stopped with audio on tape: overdub
+  // From stopped with audio on tape: punch-in (trim tape to playhead, record from there)
   if (state === 'stopped' && chunks.length > 0) {
-    overdubMode = true;
-    overdubChunks = [];
     calcPlaybackDuration();
-    overdubStartOffset = playbackOffset >= playbackDuration ? 0 : playbackOffset;
+    punchInOffset = playbackOffset >= playbackDuration ? playbackDuration : playbackOffset;
 
-    const audioBuf = getAudioBuffer();
-    playbackSource = audioCtx.createBufferSource();
-    playbackSource.buffer = audioBuf;
-    playbackSource.playbackRate.value = playSpeed / recordSpeed;
-    playbackSource.loop = loopEnabled;
+    // Trim existing tape to the punch-in point
+    const merged = getMergedBuffer();
+    const keepFrames = Math.floor(punchInOffset * sampleRate);
+    const keepSamples = keepFrames * 2;  // interleaved stereo
+    if (keepSamples > 0 && keepSamples < merged.length) {
+      chunks = [merged.slice(0, keepSamples)];
+    } else if (keepSamples <= 0) {
+      chunks = [];
+    }
+    // If keepSamples >= merged.length, tape is untouched — recording appends to end
 
-    playbackSplitter = audioCtx.createChannelSplitter(2);
-    playbackAnalyserL = audioCtx.createAnalyser();
-    playbackAnalyserR = audioCtx.createAnalyser();
-    playbackAnalyserL.fftSize = 2048;
-    playbackAnalyserR.fftSize = 2048;
-    ensureOutputGain();
-    playbackSource.connect(playbackSplitter);
-    playbackSplitter.connect(playbackAnalyserL, 0);
-    playbackSplitter.connect(playbackAnalyserR, 1);
-    playbackSource.connect(outputGainNode || audioCtx.destination);
-
-    playbackSource.onended = () => {
-      if (state === 'recording' && overdubMode) stopAll();
-    };
-
-    playbackStartTime = Date.now();
-    playbackSource.start(0, overdubStartOffset);
-
+    elapsed = punchInOffset * 1000;
     state = 'recording';
     recordStart = Date.now();
     errorMsg = '';
@@ -949,7 +896,7 @@ async function toggleRecord() {
   playbackDuration = 0;
   loadedFileName = '';
   recordSpeed = playSpeed;
-  overdubMode = false;
+  punchInOffset = 0;
   state = 'recording';
   recordStart = Date.now();
   errorMsg = '';
@@ -963,14 +910,6 @@ function stopAll() {
   }
   if (state === 'recording') {
     elapsed += Date.now() - recordStart;
-
-    if (overdubMode) {
-      killPlaybackSource();
-      mixOverdub();
-      overdubMode = false;
-      overdubChunks = [];
-    }
-
     state = 'stopped';
     rawVuL = 0;
     rawVuR = 0;
@@ -987,38 +926,6 @@ function stopAll() {
   }
   errorMsg = '';
   updateButtons();
-}
-
-function mixOverdub() {
-  if (overdubChunks.length === 0) return;
-
-  const tape = getMergedBuffer();
-  const tapeFrames = tape.length / 2;
-  if (tapeFrames === 0) return;
-
-  const dubLen = overdubChunks.reduce((s, c) => s + c.length, 0);
-  const dub = new Float32Array(dubLen);
-  let off = 0;
-  for (const c of overdubChunks) { dub.set(c, off); off += c.length; }
-  const dubFrames = dub.length / 2;
-
-  const effectiveSpeed = playSpeed / recordSpeed;
-  const startFrame = Math.floor(overdubStartOffset * sampleRate);
-
-  for (let i = 0; i < dubFrames; i++) {
-    let tapeFrame = startFrame + Math.floor(i * effectiveSpeed);
-    if (loopEnabled) {
-      tapeFrame = ((tapeFrame % tapeFrames) + tapeFrames) % tapeFrames;
-    }
-    if (tapeFrame >= 0 && tapeFrame < tapeFrames) {
-      const ti = tapeFrame * 2;
-      const di = i * 2;
-      tape[ti] = Math.max(-1, Math.min(1, tape[ti] + dub[di]));
-      tape[ti + 1] = Math.max(-1, Math.min(1, tape[ti + 1] + dub[di + 1]));
-    }
-  }
-
-  chunks = [tape];
 }
 
 // ── PLAYBACK ────────────────────────────────────────────
@@ -1068,14 +975,6 @@ function killPlaybackSource() {
 async function playBack() {
   if (state === 'recording') {
     elapsed += Date.now() - recordStart;
-
-    if (overdubMode) {
-      killPlaybackSource();
-      mixOverdub();
-      overdubMode = false;
-      overdubChunks = [];
-    }
-
     state = 'stopped';
     rawVuL = 0;
     rawVuR = 0;
@@ -1462,8 +1361,7 @@ function eraseTape() {
   playbackOffset = 0;
   playbackDuration = 0;
   recordSpeed = 1.0;
-  overdubMode = false;
-  overdubChunks = [];
+  punchInOffset = 0;
   loadedFileName = '';
   rawVuL = 0;
   rawVuR = 0;
