@@ -56,7 +56,9 @@ body {
 #viz-wrapper {
   position: relative;
   align-self: stretch;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 #viz {
@@ -65,6 +67,10 @@ body {
   line-height: 1;
   max-width: 100%;
   overflow: hidden;
+}
+
+#viz-axis {
+  line-height: 1;
 }
 
 #control-panel {
@@ -224,6 +230,7 @@ body {
   <div id="viz-wrapper">
     <pre id="viz-border-l" class="frame-line panel-border panel-border-left"></pre>
     <pre id="viz" class="display-text"></pre>
+    <pre id="viz-axis" class="display-text"></pre>
     <pre id="viz-border-r" class="frame-line panel-border panel-border-right"></pre>
   </div>
   <pre id="display-bottom" class="display-text"></pre>
@@ -265,8 +272,8 @@ body {
       <input type="range" id="gain-slider" class="crt-slider" min="-12" max="24" step="1" value="0" oninput="changeGain()" ondblclick="resetGain()">
       <label id="gain-readout" style="min-width:42px;text-align:right;cursor:pointer;" ondblclick="resetGain()">0 dB</label>
       <label>RES:</label>
-      <input type="range" id="res-slider" class="crt-slider" min="1" max="15" step="1" value="12" oninput="changeRes()" ondblclick="resetRes()">
-      <label id="res-readout" style="min-width:32px;text-align:right;cursor:pointer;" ondblclick="resetRes()">12px</label>
+      <input type="range" id="res-slider" class="crt-slider" min="1" max="15" step="1" value="11" oninput="changeRes()" ondblclick="resetRes()">
+      <label id="res-readout" style="min-width:32px;text-align:right;cursor:pointer;" ondblclick="resetRes()">11px</label>
     </div>
 
     <div class="panel-row">
@@ -292,13 +299,16 @@ const W = 64;
 const VU_W = 52;
 let SPEC_W = 58;
 let SPEC_H = 18;
-let vizFontSize = 12;
+let vizFontSize = 11;
 const BLOCKS = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 const GRAM_CHARS = [' ', '·', '░', '▒', '▓', '█'];
 const LISS_DECAY = 0.92;
 let QUAD_W = 28;
 let QUAD_H = 8;
 let VIZ_ROWS = 36;
+let SINGLE_VIZ_ROWS = 36;
+let allVizPxH = 435;
+let singleVizPxH = 435;
 
 // ── STATE ──────────────────────────────────────────
 
@@ -352,29 +362,33 @@ function recalcDimensions(fontSize) {
   const fixedCharH = FIXED_FONT * 1.45;
   const defaultSpecW = W - 6;               // 58 content chars at 12px
   const vizPxW = (defaultSpecW + 2) * fixedCharW;  // ┌ + content + ┐
-  const vizPxH = (23 + 2) * fixedCharH;            // frame top + content + frame bottom (room for ALL+VU+spacer)
+  const totalVizH = (23 + 2) * fixedCharH;           // total height from viz top to L/R bars (constant across modes)
+  allVizPxH = totalVizH - 6 * FIXED_FONT - 1 * fixedCharH;  // ALL mode: subtract quad VU (6 lines at 12px) + 1 spacing line
+  singleVizPxH = totalVizH - FIXED_FONT - 2 * fixedCharH;  // Single: subtract axis + 2 spacing lines
 
   // How many chars fit in that fixed box at the new font size
   const vizCharW = fontSize * 0.6;
   const vizCharH = fontSize * 1.0;  // line-height: 1 on viz element
   const totalCols = Math.floor(vizPxW / vizCharW);
-  const totalRows = Math.floor(vizPxH / vizCharH);
+  const totalRows = Math.floor(allVizPxH / vizCharH);
   VIZ_ROWS = totalRows;
+
+  const singleTotalRows = Math.floor(singleVizPxH / vizCharH);
+  SINGLE_VIZ_ROWS = singleTotalRows;
 
   SPEC_W = Math.max(10, totalCols - 2);
   if (SPEC_W % 2 !== 0) SPEC_W--;
-  // Cap single-mode height so they don't stretch to fill ALL mode's taller viz box
-  SPEC_H = Math.max(4, Math.min(totalRows - 2, 28));
+  SPEC_H = Math.max(4, singleTotalRows - 2);
   if (SPEC_H % 2 !== 0) SPEC_H--;
 
   QUAD_W = Math.floor((SPEC_W - 2) / 2);
-  // QUAD_H sized so ALL mode (2*QUAD_H + 9 VU/border/spacer rows) fits in totalRows
-  QUAD_H = Math.max(3, Math.floor((totalRows - 9) / 2));
+  // QUAD_H sized so ALL mode (2*QUAD_H + 3 border rows) fits in totalRows
+  QUAD_H = Math.max(3, Math.floor((totalRows - 3) / 2));
 
   // Apply variable font + fixed height to viz element (no fixed width — let content size naturally for centering)
   const vizEl = document.getElementById('viz');
   vizEl.style.fontSize = fontSize + 'px';
-  vizEl.style.height = vizPxH + 'px';
+  vizEl.style.height = allVizPxH + 'px';
 
   // Reinitialize all display state
   initBands();
@@ -949,7 +963,7 @@ function miniLissajous() {
 // ── QUAD VU METER ─────────────────────────────────
 
 function renderQuadVU() {
-  const meterW = 2 * QUAD_W;
+  const meterW = 56;
 
   const rmsL = vuNeedleL / 4;
   const rmsR = vuNeedleR / 4;
@@ -1121,11 +1135,9 @@ function render() {
       vizContent.push('│' + bl[i] + ' │' + br[i] + '│');
     }
     vizContent.push('└' + '─'.repeat(QUAD_W) + '─┴' + '─'.repeat(QUAD_W) + '┘');
-    vizContent.push(' '.repeat(2 * QUAD_W + 3));  // spacer between quad box and VU
+    // Quad VU rendered at fixed 12px in viz-axis element
     const quadVU = renderQuadVU();
-    for (const row of quadVU) {
-      vizContent.push(row);
-    }
+    document.getElementById('viz-axis').textContent = ' '.repeat(60) + '\n' + quadVU.join('\n');
   } else {
     vizContent.push('┌' + '─'.repeat(SPEC_W) + '┐');
 
@@ -1145,51 +1157,61 @@ function render() {
 
     vizContent.push('└' + '─'.repeat(SPEC_W) + '┘');
 
-    // Axis labels right under the box (in viz font so they align)
-    const vizW = SPEC_W + 2;
+    // Axis labels rendered at fixed 12px in separate element
+    const axW = 60;
+    let axisLine = '';
     if (mode === 'spectrum' || mode === 'gram') {
-      const ax = new Array(vizW).fill(' ');
+      const ax = new Array(axW).fill(' ');
       ax[1] = '0';
       const logMin = Math.log10(25), logMax = Math.log10(20000);
       const axStart = 2;
-      const axEnd = vizW - 3;
+      const axEnd = axW - 3;
       const axRange = axEnd - axStart;
       const mks = [{f:50,l:'50'},{f:100,l:'100'},{f:250,l:'250'},{f:500,l:'500'},{f:1000,l:'1k'},{f:2000,l:'2k'},{f:5000,l:'5k'},{f:10000,l:'10k'}];
       for (const m of mks) {
         const p = axStart + Math.round((Math.log10(m.f) - logMin) / (logMax - logMin) * axRange);
         const s = p - Math.floor(m.l.length / 2);
         let ok = true;
-        for (let j = Math.max(0, s-1); j < Math.min(vizW, s+m.l.length+1); j++) if (ax[j] !== ' ') ok = false;
-        if (ok && s >= 1 && s + m.l.length <= vizW - 1) for (let j = 0; j < m.l.length; j++) ax[s+j] = m.l[j];
+        for (let j = Math.max(0, s-1); j < Math.min(axW, s+m.l.length+1); j++) if (ax[j] !== ' ') ok = false;
+        if (ok && s >= 1 && s + m.l.length <= axW - 1) for (let j = 0; j < m.l.length; j++) ax[s+j] = m.l[j];
       }
-      ax[vizW - 3] = 'H'; ax[vizW - 2] = 'z';
-      vizContent.push(ax.join(''));
+      ax[axW - 3] = 'H'; ax[axW - 2] = 'z';
+      axisLine = ax.join('');
     } else if (mode === 'lissajous') {
-      const lAx = new Array(vizW).fill(' ');
+      const lAx = new Array(axW).fill(' ');
       lAx[1] = '←'; lAx[2] = 'L';
-      lAx[Math.floor(vizW / 2)] = 'M';
-      lAx[vizW - 3] = 'R'; lAx[vizW - 2] = '→';
-      vizContent.push(lAx.join(''));
+      lAx[Math.floor(axW / 2)] = 'M';
+      lAx[axW - 3] = 'R'; lAx[axW - 2] = '→';
+      axisLine = lAx.join('');
     } else if (mode === 'scope') {
-      const sAx = new Array(vizW).fill(' ');
+      const sAx = new Array(axW).fill(' ');
       '← TIME'.split('').forEach((c, i) => sAx[1 + i] = c);
-      sAx[vizW - 2] = '→';
-      for (let i = 8; i < vizW - 3; i++) sAx[i] = '─';
-      vizContent.push(sAx.join(''));
+      sAx[axW - 2] = '→';
+      for (let i = 8; i < axW - 3; i++) sAx[i] = '─';
+      axisLine = sAx.join('');
     } else {
-      vizContent.push(' '.repeat(vizW));
+      axisLine = ' '.repeat(axW);
     }
+    document.getElementById('viz-axis').textContent = axisLine;
   }
 
   // Pad bottom of viz so content sits at top, remaining space accounts for VU in ALL mode
   const vizLines = [];
   for (const line of vizContent) vizLines.push(line);
   const padStr = ' '.repeat(vizContent.length > 0 ? vizContent[0].length : 1);
-  while (vizLines.length < VIZ_ROWS) vizLines.push(padStr);
+  const targetVizRows = (mode === 'all') ? VIZ_ROWS : SINGLE_VIZ_ROWS;
+  while (vizLines.length < targetVizRows) vizLines.push(padStr);
 
   // ── Build bottom section (fixed font) ──
 
   const bottomLines = [];
+
+  if (mode === 'all') {
+    bottomLines.push(pad(''));
+  } else {
+    bottomLines.push(pad(''));
+    bottomLines.push(pad(''));
+  }
 
   bottomLines.push(center('L │' + vuBar(vuL) + '│'));
   bottomLines.push(center('R │' + vuBar(vuR) + '│'));
@@ -1224,15 +1246,18 @@ function render() {
   // ── Apply to DOM ──
 
   document.getElementById('display-top').textContent = topLines.join('\n');
-  document.getElementById('viz').textContent = vizLines.join('\n');
+  const vizEl = document.getElementById('viz');
+  vizEl.style.height = ((mode === 'all') ? allVizPxH : singleVizPxH) + 'px';
+  vizEl.textContent = vizLines.join('\n');
   document.getElementById('display-bottom').textContent = bottomLines.join('\n');
   document.getElementById('frame-mid').textContent = '╠' + '═'.repeat(W) + '╣';
   document.getElementById('frame-bot').textContent = '╚' + '═'.repeat(W) + '╝';
 
-  // Side borders for viz area
-  const vizEl = document.getElementById('viz');
+  // Side borders for viz area — cover both viz + viz-axis
   const lineH = FIXED_FONT * 1.45;
-  const vizBorderN = Math.ceil(vizEl.clientHeight / lineH) + 1;
+  const currentVizH = (mode === 'all') ? allVizPxH : singleVizPxH;
+  const currentAxisH = (mode === 'all') ? 6 * FIXED_FONT : FIXED_FONT;
+  const vizBorderN = Math.ceil((currentVizH + currentAxisH) / lineH) + 1;
   const vizBorderCol = new Array(vizBorderN).fill('║').join('\n');
   document.getElementById('viz-border-l').textContent = vizBorderCol;
   document.getElementById('viz-border-r').textContent = vizBorderCol;
@@ -1376,10 +1401,11 @@ function changeMode() {
     document.getElementById('res-slider').value = 1;
     vuRangeMin = -20;
     document.getElementById('res-readout').textContent = '23dB';
-  } else {
-    document.getElementById('res-slider').value = 12;
-    document.getElementById('res-readout').textContent = '12px';
     recalcDimensions(12);
+  } else {
+    document.getElementById('res-slider').value = 11;
+    document.getElementById('res-readout').textContent = '11px';
+    recalcDimensions(11);
   }
 }
 
@@ -1405,7 +1431,7 @@ function resetGain() {
 }
 
 function resetRes() {
-  document.getElementById('res-slider').value = mode === 'vu' ? 1 : 12;
+  document.getElementById('res-slider').value = mode === 'vu' ? 1 : 11;
   changeRes();
 }
 
@@ -1510,7 +1536,9 @@ function applyColors() {
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
 
-  switch (e.key.toLowerCase()) {
+  const key = e.key;
+
+  switch (key.toLowerCase()) {
     case ' ':
       e.preventDefault();
       toggleAudio();
@@ -1550,6 +1578,32 @@ document.addEventListener('keydown', (e) => {
       changeMode();
       break;
   }
+
+  const modeOrder = ['all', 'spectrum', 'scope', 'gram', 'lissajous', 'vu'];
+  const sel = document.getElementById('mode-select');
+  const resSlider = document.getElementById('res-slider');
+
+  if (key === 'ArrowUp') {
+    e.preventDefault();
+    const idx = modeOrder.indexOf(mode);
+    sel.value = modeOrder[(idx - 1 + modeOrder.length) % modeOrder.length];
+    changeMode();
+  } else if (key === 'ArrowDown') {
+    e.preventDefault();
+    const idx = modeOrder.indexOf(mode);
+    sel.value = modeOrder[(idx + 1) % modeOrder.length];
+    changeMode();
+  } else if (key === 'ArrowRight') {
+    e.preventDefault();
+    const step = e.shiftKey ? 5 : 1;
+    resSlider.value = Math.min(parseInt(resSlider.max), parseInt(resSlider.value) + step);
+    changeRes();
+  } else if (key === 'ArrowLeft') {
+    e.preventDefault();
+    const step = e.shiftKey ? 5 : 1;
+    resSlider.value = Math.max(parseInt(resSlider.min), parseInt(resSlider.value) - step);
+    changeRes();
+  }
 });
 
 // Return focus after dropdown interaction
@@ -1575,7 +1629,7 @@ requestAnimationFrame(scaleCrt);
 
 // ── INIT ───────────────────────────────────────────
 
-recalcDimensions(12);
+recalcDimensions(11);
 requestAnimationFrame(render);
 
 </script>
