@@ -361,6 +361,9 @@ let lufsHPR = null;           // Stage 2 high-pass filter R
 let lufsMomentary = -Infinity;  // 400ms momentary LUFS
 let lufsShortTerm = -Infinity;  // 3s short-term LUFS
 let lufsIntegrated = -Infinity; // gated integrated LUFS
+let lufsMomentarySmooth = -Infinity;  // smoothed display value
+let lufsShortTermSmooth = -Infinity;  // smoothed display value
+const LUFS_SMOOTH = 0.15;            // smoothing coefficient (lower = smoother)
 
 // Sliding window of 400ms block mean-squares (for momentary + short-term)
 // Each entry: { zL, zR } — mean square of K-weighted signal per channel
@@ -1118,6 +1121,18 @@ function render() {
 
     // Update LUFS measurement
     updateLUFS();
+
+    // Smooth displayed M and S values (exponential moving average)
+    if (lufsMomentary > -100 && lufsMomentarySmooth > -100) {
+      lufsMomentarySmooth += (lufsMomentary - lufsMomentarySmooth) * LUFS_SMOOTH;
+    } else {
+      lufsMomentarySmooth = lufsMomentary;
+    }
+    if (lufsShortTerm > -100 && lufsShortTermSmooth > -100) {
+      lufsShortTermSmooth += (lufsShortTerm - lufsShortTermSmooth) * LUFS_SMOOTH;
+    } else {
+      lufsShortTermSmooth = lufsShortTerm;
+    }
   }
 
   if (!active) {
@@ -1127,6 +1142,8 @@ function render() {
     peakHoldDb = -Infinity;
     lufsMomentary = -Infinity;
     lufsShortTerm = -Infinity;
+    lufsMomentarySmooth = -Infinity;
+    lufsShortTermSmooth = -Infinity;
   }
 
   // VU needle ballistics (slow rise, slower fall — like a real meter movement)
@@ -1269,8 +1286,8 @@ function render() {
   bottomLines.push(pad('  MODE:   ' + modeLabel + 'PEAK:' + peakStr.padStart(6) + ' dB'));
 
   // LUFS display: M=momentary(400ms) S=short-term(3s) I=integrated(gated) R=LRA
-  const mLufs = lufsMomentary > -100 ? lufsMomentary.toFixed(1) : '-∞';
-  const sLufs = lufsShortTerm > -100 ? lufsShortTerm.toFixed(1) : '-∞';
+  const mLufs = lufsMomentarySmooth > -100 ? lufsMomentarySmooth.toFixed(1) : '-∞';
+  const sLufs = lufsShortTermSmooth > -100 ? lufsShortTermSmooth.toFixed(1) : '-∞';
   const iLufs = lufsIntegrated > -100 ? lufsIntegrated.toFixed(1) : '-∞';
   const rLufs = lufsLRA > 0 ? lufsLRA.toFixed(1) : '-∞';
   bottomLines.push(pad('  LUFS: M' + mLufs.padStart(6) + ' S' + sLufs.padStart(6) + ' I' + iLufs.padStart(6) + ' R' + rLufs.padStart(5)));
@@ -1441,18 +1458,21 @@ function updateLUFS() {
           lufsShortTermHistory.push(lufsShortTerm);
         }
 
-        // LRA: absolute gate -70 (done above), relative gate -20 LU, then 95th - 10th percentile
+        // LRA (EBU Tech 3342): absolute gate -70 (done above),
+        // relative gate -20 LU (power-domain average), then 95th - 10th percentile
         if (lufsShortTermHistory.length >= 2) {
-          // Relative gate: -20 LU below ungated mean of short-term values
-          let sum = 0;
-          for (const v of lufsShortTermHistory) sum += v;
-          const relGate = sum / lufsShortTermHistory.length - 20;
+          // Ungated mean in power domain, then convert to LUFS for the gate
+          let powerSum = 0;
+          for (const v of lufsShortTermHistory) powerSum += Math.pow(10, (v + 0.691) / 10);
+          const meanPower = powerSum / lufsShortTermHistory.length;
+          const ungatedLoudness = meanPower > 1e-10 ? -0.691 + 10 * Math.log10(meanPower) : -Infinity;
+          const relGate = ungatedLoudness - 20;
 
           const gated = lufsShortTermHistory.filter(v => v > relGate);
           if (gated.length >= 2) {
             gated.sort((a, b) => a - b);
             const p10 = gated[Math.floor(gated.length * 0.10)];
-            const p95 = gated[Math.floor(gated.length * 0.95)];
+            const p95 = gated[Math.min(gated.length - 1, Math.ceil(gated.length * 0.95) - 1)];
             lufsLRA = p95 - p10;
           }
         }
@@ -1489,6 +1509,8 @@ function resetLUFS() {
   lufsMomentary = -Infinity;
   lufsShortTerm = -Infinity;
   lufsIntegrated = -Infinity;
+  lufsMomentarySmooth = -Infinity;
+  lufsShortTermSmooth = -Infinity;
   lufsLRA = 0;
   lufsAccumL = 0; lufsAccumR = 0; lufsAccumSamples = 0;
   lufsStepBufferL = []; lufsStepBufferR = [];
