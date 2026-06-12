@@ -381,6 +381,10 @@ const LUFS_BLOCKS_FOR_3S = 30;   // 3s / 100ms steps, need 30 steps → 27 overl
 // Integrated LUFS gating
 let lufsGateBlocks = [];      // all blocks for integrated measurement { zL, zR, loudness }
 
+// LRA (Loudness Range) — EBU Tech 3342
+let lufsShortTermHistory = []; // all short-term loudness values for LRA calculation
+let lufsLRA = 0;               // loudness range in LU
+
 let tick = 0;
 
 // ── RESOLUTION ─────────────────────────────────────
@@ -1264,11 +1268,12 @@ function render() {
   const peakStr = peakHoldDb > -100 ? (peakHoldDb >= 0 ? '+' : '') + peakHoldDb.toFixed(1) : ' -∞';
   bottomLines.push(pad('  MODE:   ' + modeLabel + 'PEAK:' + peakStr.padStart(6) + ' dB'));
 
-  // LUFS display: M=momentary(400ms) S=short-term(3s) I=integrated(gated)
+  // LUFS display: M=momentary(400ms) S=short-term(3s) I=integrated(gated) R=LRA
   const mLufs = lufsMomentary > -100 ? lufsMomentary.toFixed(1) : '-∞';
   const sLufs = lufsShortTerm > -100 ? lufsShortTerm.toFixed(1) : '-∞';
   const iLufs = lufsIntegrated > -100 ? lufsIntegrated.toFixed(1) : '-∞';
-  bottomLines.push(pad('  LUFS: M' + mLufs.padStart(6) + '  S' + sLufs.padStart(6) + '  I' + iLufs.padStart(6)));
+  const rLufs = lufsLRA > 0 ? lufsLRA.toFixed(1) : '-∞';
+  bottomLines.push(pad('  LUFS: M' + mLufs.padStart(6) + ' S' + sLufs.padStart(6) + ' I' + iLufs.padStart(6) + ' R' + rLufs.padStart(5)));
 
   if (frozen) {
     bottomLines.push(pad('  STATUS: HOLD'));
@@ -1430,6 +1435,27 @@ function updateLUFS() {
         stZR /= 30;
         const stPower = stZL + stZR;
         lufsShortTerm = stPower > 1e-10 ? -0.691 + 10 * Math.log10(stPower) : -Infinity;
+
+        // Store for LRA (EBU Tech 3342)
+        if (lufsShortTerm > -70) {
+          lufsShortTermHistory.push(lufsShortTerm);
+        }
+
+        // LRA: absolute gate -70 (done above), relative gate -20 LU, then 95th - 10th percentile
+        if (lufsShortTermHistory.length >= 2) {
+          // Relative gate: -20 LU below ungated mean of short-term values
+          let sum = 0;
+          for (const v of lufsShortTermHistory) sum += v;
+          const relGate = sum / lufsShortTermHistory.length - 20;
+
+          const gated = lufsShortTermHistory.filter(v => v > relGate);
+          if (gated.length >= 2) {
+            gated.sort((a, b) => a - b);
+            const p10 = gated[Math.floor(gated.length * 0.10)];
+            const p95 = gated[Math.floor(gated.length * 0.95)];
+            lufsLRA = p95 - p10;
+          }
+        }
       }
 
       // Integrated LUFS with two-stage gating (BS.1770-3 §5-7)
@@ -1463,10 +1489,12 @@ function resetLUFS() {
   lufsMomentary = -Infinity;
   lufsShortTerm = -Infinity;
   lufsIntegrated = -Infinity;
+  lufsLRA = 0;
   lufsAccumL = 0; lufsAccumR = 0; lufsAccumSamples = 0;
   lufsStepBufferL = []; lufsStepBufferR = [];
   lufsBlockHistory = [];
   lufsGateBlocks = [];
+  lufsShortTermHistory = [];
 }
 
 // ── AUDIO INIT ─────────────────────────────────────
