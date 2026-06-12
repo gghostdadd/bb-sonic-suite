@@ -279,6 +279,7 @@ body {
     <div class="panel-row">
       <button class="btn" id="btn-start" onclick="toggleAudio()">▶ START</button>
       <button class="btn" id="btn-hold" onclick="toggleHold()" disabled>❚❚ HOLD</button>
+      <button class="btn" onclick="resetLUFS()" style="padding:4px 8px;font-size:11px;">↺ LUFS</button>
     </div>
 
     <div class="panel-row">
@@ -349,6 +350,36 @@ let vuRangeMin = -20;
 let peakLevel = 0;
 let peakHoldDb = -Infinity;
 let peakHoldTimer = 0;
+
+// ── LUFS (ITU-R BS.1770-3) ───────────────────────
+let lufsFilterL = null;       // K-weighted analyser for left channel
+let lufsFilterR = null;       // K-weighted analyser for right channel
+let lufsShelfL = null;        // Stage 1 high-shelf filter L
+let lufsShelfR = null;        // Stage 1 high-shelf filter R
+let lufsHPL = null;           // Stage 2 high-pass filter L
+let lufsHPR = null;           // Stage 2 high-pass filter R
+let lufsMomentary = -Infinity;  // 400ms momentary LUFS
+let lufsShortTerm = -Infinity;  // 3s short-term LUFS
+let lufsIntegrated = -Infinity; // gated integrated LUFS
+
+// Sliding window of 400ms block mean-squares (for momentary + short-term)
+// Each entry: { zL, zR } — mean square of K-weighted signal per channel
+const LUFS_BLOCK_MS = 400;
+const LUFS_OVERLAP = 0.75;
+const LUFS_STEP_MS = LUFS_BLOCK_MS * (1 - LUFS_OVERLAP);  // 100ms steps
+let lufsBlockHistory = [];    // array of { zL, zR, loudness } per 400ms block
+let lufsAccumL = 0;           // running sum-of-squares for current step
+let lufsAccumR = 0;
+let lufsAccumSamples = 0;     // samples accumulated in current step
+let lufsStepSamples = 0;      // samples per step (computed from sample rate)
+let lufsBlockSamples = 0;     // samples per block
+let lufsStepBufferL = [];     // ring buffer of step mean-squares
+let lufsStepBufferR = [];
+const LUFS_STEPS_PER_BLOCK = 4;  // 400ms / 100ms
+const LUFS_BLOCKS_FOR_3S = 30;   // 3s / 100ms steps, need 30 steps → 27 overlapping blocks
+
+// Integrated LUFS gating
+let lufsGateBlocks = [];      // all blocks for integrated measurement { zL, zR, loudness }
 
 let tick = 0;
 
@@ -1080,6 +1111,9 @@ function render() {
     } else {
       peakHoldDb = currentDb;
     }
+
+    // Update LUFS measurement
+    updateLUFS();
   }
 
   if (!active) {
@@ -1087,6 +1121,8 @@ function render() {
     rawVuR = 0;
     peakLevel = 0;
     peakHoldDb = -Infinity;
+    lufsMomentary = -Infinity;
+    lufsShortTerm = -Infinity;
   }
 
   // VU needle ballistics (slow rise, slower fall — like a real meter movement)
@@ -1228,6 +1264,12 @@ function render() {
   const peakStr = peakHoldDb > -100 ? (peakHoldDb >= 0 ? '+' : '') + peakHoldDb.toFixed(1) : ' -∞';
   bottomLines.push(pad('  MODE:   ' + modeLabel + 'PEAK:' + peakStr.padStart(6) + ' dB'));
 
+  // LUFS display: M=momentary(400ms) S=short-term(3s) I=integrated(gated)
+  const mLufs = lufsMomentary > -100 ? lufsMomentary.toFixed(1) : '-∞';
+  const sLufs = lufsShortTerm > -100 ? lufsShortTerm.toFixed(1) : '-∞';
+  const iLufs = lufsIntegrated > -100 ? lufsIntegrated.toFixed(1) : '-∞';
+  bottomLines.push(pad('  LUFS: M' + mLufs.padStart(6) + '  S' + sLufs.padStart(6) + '  I' + iLufs.padStart(6)));
+
   if (frozen) {
     bottomLines.push(pad('  STATUS: HOLD'));
   } else if (active) {
@@ -1272,6 +1314,161 @@ function render() {
   requestAnimationFrame(render);
 }
 
+// ── LUFS K-WEIGHTING ──────────────────────────────
+
+// ITU-R BS.1770-3 K-weighting filter coefficients
+// These are specified at 48kHz; for other rates we use bilinear transform
+function getKWeightingCoeffs(sr) {
+  if (sr === 48000) {
+    return {
+      shelf: {
+        b: [1.53512485958697, -2.69169618940638, 1.19839281085285],
+        a: [1.0, -1.69065929318241, 0.73248077421585]
+      },
+      hp: {
+        b: [1.0, -2.0, 1.0],
+        a: [1.0, -1.99004745483398, 0.99007225036621]
+      }
+    };
+  }
+  // For other sample rates, pre-warp the analog prototype and apply bilinear transform
+  // Stage 1: High shelf — analog prototype derived from 48kHz coefficients
+  const db = 3.999843853973347;   // shelf gain in dB
+  const f0 = 1681.974450955533;   // shelf transition frequency Hz
+  const Q  = 0.7071752369554196;  // quality factor
+  const K  = Math.tan(Math.PI * f0 / sr);
+  const Vh = Math.pow(10, db / 20);
+  const Vb = Math.pow(Vh, 0.4996667741545416);
+  const a0s = 1 + K / Q + K * K;
+  const shelf_b0 = (Vh + Vb * K / Q + K * K) / a0s;
+  const shelf_b1 = 2 * (K * K - Vh) / a0s;
+  const shelf_b2 = (Vh - Vb * K / Q + K * K) / a0s;
+  const shelf_a1 = 2 * (K * K - 1) / a0s;
+  const shelf_a2 = (1 - K / Q + K * K) / a0s;
+
+  // Stage 2: High-pass ~38Hz
+  const f1 = 38.13547087602444;
+  const Q1 = 0.5003270373238773;
+  const K1 = Math.tan(Math.PI * f1 / sr);
+  const a0h = 1 + K1 / Q1 + K1 * K1;
+  const hp_b0 = 1 / a0h;
+  const hp_b1 = -2 / a0h;
+  const hp_b2 = 1 / a0h;
+  const hp_a1 = 2 * (K1 * K1 - 1) / a0h;
+  const hp_a2 = (1 - K1 / Q1 + K1 * K1) / a0h;
+
+  return {
+    shelf: { b: [shelf_b0, shelf_b1, shelf_b2], a: [1.0, shelf_a1, shelf_a2] },
+    hp:    { b: [hp_b0, hp_b1, hp_b2],          a: [1.0, hp_a1, hp_a2] }
+  };
+}
+
+// Process K-weighted analyser data for LUFS calculation
+function updateLUFS() {
+  if (!lufsFilterL || !lufsFilterR) return;
+
+  const bufLen = lufsFilterL.fftSize;
+  const dL = new Float32Array(bufLen);
+  const dR = new Float32Array(bufLen);
+  lufsFilterL.getFloatTimeDomainData(dL);
+  lufsFilterR.getFloatTimeDomainData(dR);
+
+  // Accumulate sum-of-squares sample by sample
+  for (let i = 0; i < bufLen; i++) {
+    lufsAccumL += dL[i] * dL[i];
+    lufsAccumR += dR[i] * dR[i];
+    lufsAccumSamples++;
+
+    // When we've accumulated one step (100ms), store it
+    if (lufsAccumSamples >= lufsStepSamples) {
+      const stepZL = lufsAccumL / lufsAccumSamples;
+      const stepZR = lufsAccumR / lufsAccumSamples;
+      lufsStepBufferL.push(stepZL);
+      lufsStepBufferR.push(stepZR);
+      lufsAccumL = 0;
+      lufsAccumR = 0;
+      lufsAccumSamples = 0;
+
+      // When we have enough steps for a 400ms block (4 steps), compute block loudness
+      if (lufsStepBufferL.length >= LUFS_STEPS_PER_BLOCK) {
+        // Mean square over the block (average of the 4 step mean-squares)
+        let blockZL = 0, blockZR = 0;
+        for (let s = lufsStepBufferL.length - LUFS_STEPS_PER_BLOCK; s < lufsStepBufferL.length; s++) {
+          blockZL += lufsStepBufferL[s];
+          blockZR += lufsStepBufferR[s];
+        }
+        blockZL /= LUFS_STEPS_PER_BLOCK;
+        blockZR /= LUFS_STEPS_PER_BLOCK;
+
+        // Channel weights: G_L = G_R = 1.0 for stereo
+        const blockPower = blockZL + blockZR;
+        const blockLoudness = blockPower > 1e-10 ? -0.691 + 10 * Math.log10(blockPower) : -Infinity;
+
+        // Momentary LUFS = loudness of the most recent 400ms block
+        lufsMomentary = blockLoudness;
+
+        // Store for integrated gating
+        if (blockLoudness > -70) {
+          lufsGateBlocks.push({ zL: blockZL, zR: blockZR, loudness: blockLoudness });
+        }
+
+        // Trim step buffer to keep only what's needed for short-term (3s = 30 steps)
+        if (lufsStepBufferL.length > 30) {
+          lufsStepBufferL.shift();
+          lufsStepBufferR.shift();
+        }
+      }
+
+      // Short-term LUFS (3s window) — need at least 30 steps
+      if (lufsStepBufferL.length >= 30) {
+        let stZL = 0, stZR = 0;
+        for (let s = lufsStepBufferL.length - 30; s < lufsStepBufferL.length; s++) {
+          stZL += lufsStepBufferL[s];
+          stZR += lufsStepBufferR[s];
+        }
+        stZL /= 30;
+        stZR /= 30;
+        const stPower = stZL + stZR;
+        lufsShortTerm = stPower > 1e-10 ? -0.691 + 10 * Math.log10(stPower) : -Infinity;
+      }
+
+      // Integrated LUFS with two-stage gating (BS.1770-3 §5-7)
+      if (lufsGateBlocks.length > 0) {
+        // Pass 1: absolute gate at -70 LKFS (already filtered on insert)
+        let sumZL = 0, sumZR = 0;
+        for (const b of lufsGateBlocks) { sumZL += b.zL; sumZR += b.zR; }
+        const pass1Power = sumZL / lufsGateBlocks.length + sumZR / lufsGateBlocks.length;
+        const pass1Loudness = pass1Power > 1e-10 ? -0.691 + 10 * Math.log10(pass1Power) : -Infinity;
+
+        // Pass 2: relative gate at pass1 - 10 LU
+        const relativeThreshold = pass1Loudness - 10;
+        let sum2ZL = 0, sum2ZR = 0, count2 = 0;
+        for (const b of lufsGateBlocks) {
+          if (b.loudness > relativeThreshold) {
+            sum2ZL += b.zL;
+            sum2ZR += b.zR;
+            count2++;
+          }
+        }
+        if (count2 > 0) {
+          const intPower = sum2ZL / count2 + sum2ZR / count2;
+          lufsIntegrated = intPower > 1e-10 ? -0.691 + 10 * Math.log10(intPower) : -Infinity;
+        }
+      }
+    }
+  }
+}
+
+function resetLUFS() {
+  lufsMomentary = -Infinity;
+  lufsShortTerm = -Infinity;
+  lufsIntegrated = -Infinity;
+  lufsAccumL = 0; lufsAccumR = 0; lufsAccumSamples = 0;
+  lufsStepBufferL = []; lufsStepBufferR = [];
+  lufsBlockHistory = [];
+  lufsGateBlocks = [];
+}
+
 // ── AUDIO INIT ─────────────────────────────────────
 
 async function initAudio() {
@@ -1310,6 +1507,37 @@ async function initAudio() {
     silentGain = audioCtx.createGain();
     silentGain.gain.value = 0;
 
+    // K-weighting filters for LUFS (ITU-R BS.1770-3)
+    // Stage 1: high-shelf pre-filter (head model)
+    // Stage 2: high-pass ~38Hz (RLB weighting)
+    // Coefficients from the spec at 48kHz; use IIRFilterNode for exact match
+    const kCoeffs = getKWeightingCoeffs(audioCtx.sampleRate);
+
+    lufsShelfL = audioCtx.createIIRFilter(kCoeffs.shelf.b, kCoeffs.shelf.a);
+    lufsShelfR = audioCtx.createIIRFilter(kCoeffs.shelf.b, kCoeffs.shelf.a);
+    lufsHPL = audioCtx.createIIRFilter(kCoeffs.hp.b, kCoeffs.hp.a);
+    lufsHPR = audioCtx.createIIRFilter(kCoeffs.hp.b, kCoeffs.hp.a);
+    lufsFilterL = audioCtx.createAnalyser();
+    lufsFilterR = audioCtx.createAnalyser();
+    lufsFilterL.fftSize = 2048;
+    lufsFilterR.fftSize = 2048;
+
+    // Chain: splitter → shelf → HP → LUFS analyser (per channel)
+    splitterNode.connect(lufsShelfL, 0);
+    lufsShelfL.connect(lufsHPL);
+    lufsHPL.connect(lufsFilterL);
+    splitterNode.connect(lufsShelfR, 1);
+    lufsShelfR.connect(lufsHPR);
+    lufsHPR.connect(lufsFilterR);
+
+    // Init LUFS accumulation
+    lufsStepSamples = Math.round(audioCtx.sampleRate * LUFS_STEP_MS / 1000);
+    lufsBlockSamples = Math.round(audioCtx.sampleRate * LUFS_BLOCK_MS / 1000);
+    lufsAccumL = 0; lufsAccumR = 0; lufsAccumSamples = 0;
+    lufsStepBufferL = []; lufsStepBufferR = [];
+    lufsBlockHistory = [];
+    lufsGateBlocks = [];
+
     sourceNode.connect(gainNode);
     gainNode.connect(analyserNode);
     gainNode.connect(splitterNode);
@@ -1347,6 +1575,13 @@ function teardownAudio() {
   if (silentGain) { silentGain.disconnect(); silentGain = null; }
   analyserL = null;
   analyserR = null;
+  // LUFS filter chain
+  if (lufsShelfL) { lufsShelfL.disconnect(); lufsShelfL = null; }
+  if (lufsShelfR) { lufsShelfR.disconnect(); lufsShelfR = null; }
+  if (lufsHPL) { lufsHPL.disconnect(); lufsHPL = null; }
+  if (lufsHPR) { lufsHPR.disconnect(); lufsHPR = null; }
+  lufsFilterL = null;
+  lufsFilterR = null;
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   if (audioCtx) { audioCtx.close(); audioCtx = null; }
 }
@@ -1364,6 +1599,7 @@ async function toggleAudio() {
     miniGramHistory = [];
     miniLissGrid = null;
     if (miniPeaks) miniPeaks.fill(0);
+    resetLUFS();
     document.getElementById('btn-start').textContent = '▶ START';
     document.getElementById('btn-start').classList.remove('active');
     document.getElementById('btn-hold').disabled = true;
@@ -1375,6 +1611,7 @@ async function toggleAudio() {
   const ok = await initAudio();
   if (!ok) return;
 
+  resetLUFS();
   active = true;
   document.getElementById('btn-start').textContent = '■ STOP';
   document.getElementById('btn-start').classList.add('active');
