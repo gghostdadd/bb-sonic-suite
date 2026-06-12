@@ -363,7 +363,7 @@ let lufsShortTerm = -Infinity;  // 3s short-term LUFS
 let lufsIntegrated = -Infinity; // gated integrated LUFS
 let lufsMomentarySmooth = -Infinity;  // smoothed display value
 let lufsShortTermSmooth = -Infinity;  // smoothed display value
-const LUFS_SMOOTH = 0.15;            // smoothing coefficient (lower = smoother)
+const LUFS_SMOOTH = 0.08;             // smoothing coefficient (~10Hz feel at 60fps)
 
 // Sliding window of 400ms block mean-squares (for momentary + short-term)
 // Each entry: { zL, zR } — mean square of K-weighted signal per channel
@@ -1281,16 +1281,17 @@ function render() {
   bottomLines.push(pad('  INPUT:  ' + truncDev));
 
   const modeNames = { all: 'ALL', spectrum: 'SPECTRUM', scope: 'SCOPE', gram: 'SPECTROGRAM', lissajous: 'LISSAJOUS', vu: 'VU METER' };
-  const modeLabel = (modeNames[mode] || 'SPECTRUM').padEnd(14);
+  const modeLabel = (modeNames[mode] || 'SPECTRUM').padEnd(10);
   const peakStr = peakHoldDb > -100 ? (peakHoldDb >= 0 ? '+' : '') + peakHoldDb.toFixed(1) : ' -∞';
-  bottomLines.push(pad('  MODE:   ' + modeLabel + 'PEAK:' + peakStr.padStart(6) + ' dB'));
+  const psr = (peakHoldDb > -100 && lufsShortTermSmooth > -100) ? (peakHoldDb - lufsShortTermSmooth).toFixed(1) : '-∞';
+  bottomLines.push(pad('  MODE: ' + modeLabel + ' PEAK:' + peakStr.padStart(6) + '  PSR:' + psr.padStart(6)));
 
   // LUFS display: M=momentary(400ms) S=short-term(3s) I=integrated(gated) R=LRA
   const mLufs = lufsMomentarySmooth > -100 ? lufsMomentarySmooth.toFixed(1) : '-∞';
   const sLufs = lufsShortTermSmooth > -100 ? lufsShortTermSmooth.toFixed(1) : '-∞';
   const iLufs = lufsIntegrated > -100 ? lufsIntegrated.toFixed(1) : '-∞';
   const rLufs = lufsLRA > 0 ? lufsLRA.toFixed(1) : '-∞';
-  bottomLines.push(pad('  LUFS: M' + mLufs.padStart(6) + ' S' + sLufs.padStart(6) + ' I' + iLufs.padStart(6) + ' R' + rLufs.padStart(5)));
+  bottomLines.push(pad('  LUFS: M' + mLufs.padStart(6) + '  S' + sLufs.padStart(6) + '  I' + iLufs.padStart(6) + '  R' + rLufs.padStart(5)));
 
   if (frozen) {
     bottomLines.push(pad('  STATUS: HOLD'));
