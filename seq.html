@@ -245,8 +245,9 @@ const W = 50;
 const POSITION_BAR_W = 28;
 const CTRL_ROWS = 11; // blank rows reserved for controls overlay
 const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-const ROLL_ROWS = 5;
+const ROLL_ROWS = 9;
 const ROLL_W = 46; // chars wide for the roll area (W - 4 for padding/labels)
+const CC_MAX_LANES = 4;
 
 // ── STATE ─────────────────────────────────────────
 let midiAccess = null;
@@ -283,6 +284,7 @@ let midiSupported = true;
 let lastNoteDisplay = null; // { name, vel, ch, time }
 let activeNotes = new Map(); // key -> { note, ch } for note-off tracking
 let noteActivity = 0; // visual activity indicator
+let lastCCDisplay = null; // { cc, val, ch }
 let eraseArmed = false;
 let eraseTimeout = null;
 
@@ -318,12 +320,13 @@ function positionBar(pos, total) {
 
 // ── PIANO ROLL ────────────────────────────────────
 function renderPianoRoll(posMs) {
-  // Extract note-on events with duration info
-  const noteOns = [];
-  const pending = new Map(); // note -> start time
   const duration = loopLengthMs > 0 ? loopLengthMs :
     (state === 'recording' ? (transportOffset + (performance.now() - transportStartTime) * playbackRate) : 0);
+  const totalTime = duration > 0 ? duration : 1;
 
+  // Extract note-on events with duration info
+  const noteOns = [];
+  const pending = new Map();
   for (const event of sequence) {
     const status = event.data[0] & 0xF0;
     const note = event.data[1];
@@ -332,76 +335,109 @@ function renderPianoRoll(posMs) {
       pending.set(note, event.time);
     } else if (status === 0x80 || (status === 0x90 && vel === 0)) {
       if (pending.has(note)) {
-        const start = pending.get(note);
-        noteOns.push({ note, start, end: event.time, vel: 100 });
+        noteOns.push({ note, start: pending.get(note), end: event.time });
         pending.delete(note);
       }
     }
   }
-  // Close any still-pending notes at duration
   for (const [note, start] of pending) {
-    noteOns.push({ note, start, end: duration > 0 ? duration : start + 100, vel: 100 });
+    noteOns.push({ note, start, end: duration > 0 ? duration : start + 100 });
   }
 
+  // Extract unique CC numbers
+  const ccNums = new Set();
+  for (const event of sequence) {
+    if ((event.data[0] & 0xF0) === 0xB0) ccNums.add(event.data[1]);
+  }
+  const ccList = [...ccNums].sort((a, b) => a - b).slice(0, CC_MAX_LANES);
+
   // Empty state
-  if (noteOns.length === 0) {
+  if (noteOns.length === 0 && ccList.length === 0) {
     const rows = [];
-    for (let r = 0; r < ROLL_ROWS; r++) {
-      rows.push('  ' + ' '.repeat(ROLL_W));
-    }
+    for (let r = 0; r < ROLL_ROWS; r++) rows.push('  ' + ' '.repeat(ROLL_W));
     return rows;
   }
 
-  // Find pitch range
-  let minNote = 127, maxNote = 0;
-  for (const n of noteOns) {
-    if (n.note < minNote) minNote = n.note;
-    if (n.note > maxNote) maxNote = n.note;
+  // Build grids
+  const noteGrid = [];
+  const ccGrid = [];
+  for (let r = 0; r < ROLL_ROWS; r++) {
+    noteGrid.push(new Array(ROLL_W).fill(false));
+    ccGrid.push(new Array(ROLL_W).fill(-1));
   }
-  // Pad range so single notes aren't squished
-  if (maxNote - minNote < ROLL_ROWS - 1) {
-    const center = Math.round((maxNote + minNote) / 2);
-    minNote = Math.max(0, center - Math.floor((ROLL_ROWS - 1) / 2));
-    maxNote = minNote + ROLL_ROWS - 1;
-  }
-  const pitchRange = maxNote - minNote;
 
-  // Time range
-  const totalTime = duration > 0 ? duration : 1;
-
-  // Build grid
-  const grid = [];
-  for (let r = 0; r < ROLL_ROWS; r++) grid.push(new Array(ROLL_W).fill(0));
-
-  for (const n of noteOns) {
-    // Map pitch to row (top = high, bottom = low)
-    const rowF = (1 - (n.note - minNote) / pitchRange) * (ROLL_ROWS - 1);
-    const row = Math.round(Math.max(0, Math.min(ROLL_ROWS - 1, rowF)));
-    // Map time to columns
-    const colStart = Math.floor((n.start / totalTime) * ROLL_W);
-    const colEnd = Math.max(colStart + 1, Math.ceil((n.end / totalTime) * ROLL_W));
-    for (let c = Math.max(0, colStart); c < Math.min(ROLL_W, colEnd); c++) {
-      grid[row][c] = Math.max(grid[row][c], 1);
+  // Plot notes
+  if (noteOns.length > 0) {
+    let minNote = 127, maxNote = 0;
+    for (const n of noteOns) {
+      if (n.note < minNote) minNote = n.note;
+      if (n.note > maxNote) maxNote = n.note;
     }
-  }
-
-  // Add playhead
-  if (posMs > 0 && duration > 0) {
-    const headCol = Math.floor((posMs / totalTime) * ROLL_W);
-    if (headCol >= 0 && headCol < ROLL_W) {
-      for (let r = 0; r < ROLL_ROWS; r++) {
-        if (grid[r][headCol] === 0) grid[r][headCol] = 2; // playhead marker
+    if (maxNote - minNote < ROLL_ROWS - 1) {
+      const mid = Math.round((maxNote + minNote) / 2);
+      minNote = Math.max(0, mid - Math.floor((ROLL_ROWS - 1) / 2));
+      maxNote = minNote + ROLL_ROWS - 1;
+    }
+    const pitchRange = maxNote - minNote || 1;
+    for (const n of noteOns) {
+      const rowF = (1 - (n.note - minNote) / pitchRange) * (ROLL_ROWS - 1);
+      const row = Math.round(Math.max(0, Math.min(ROLL_ROWS - 1, rowF)));
+      const colStart = Math.floor((n.start / totalTime) * ROLL_W);
+      const colEnd = Math.max(colStart + 1, Math.ceil((n.end / totalTime) * ROLL_W));
+      for (let c = Math.max(0, colStart); c < Math.min(ROLL_W, colEnd); c++) {
+        noteGrid[row][c] = true;
       }
     }
   }
 
-  // Render to strings
+  // Plot CC lines (value 0-127 mapped to rows, top = high)
+  for (let ci = 0; ci < ccList.length; ci++) {
+    const ccNum = ccList[ci];
+    const events = sequence
+      .filter(e => (e.data[0] & 0xF0) === 0xB0 && e.data[1] === ccNum)
+      .sort((a, b) => a.time - b.time);
+
+    // First pass: compute row per column
+    const ccRow = new Array(ROLL_W).fill(-1);
+    for (let c = 0; c < ROLL_W; c++) {
+      const t = (c / ROLL_W) * totalTime;
+      let val = -1;
+      for (let i = events.length - 1; i >= 0; i--) {
+        if (events[i].time <= t) { val = events[i].data[2]; break; }
+      }
+      if (val >= 0) {
+        const rowF = (1 - val / 127) * (ROLL_ROWS - 1);
+        ccRow[c] = Math.round(Math.max(0, Math.min(ROLL_ROWS - 1, rowF)));
+      }
+    }
+
+    // Second pass: plot dots and fill vertical gaps between columns
+    for (let c = 0; c < ROLL_W; c++) {
+      if (ccRow[c] < 0) continue;
+      const row = ccRow[c];
+      if (!noteGrid[row][c] && ccGrid[row][c] < 0) ccGrid[row][c] = ci;
+      if (c > 0 && ccRow[c - 1] >= 0) {
+        const minR = Math.min(ccRow[c - 1], row);
+        const maxR = Math.max(ccRow[c - 1], row);
+        for (let r = minR + 1; r < maxR; r++) {
+          if (!noteGrid[r][c] && ccGrid[r][c] < 0) ccGrid[r][c] = ci;
+        }
+      }
+    }
+  }
+
+  // Playhead column
+  const headCol = (posMs > 0 && duration > 0) ?
+    Math.min(ROLL_W - 1, Math.floor((posMs / totalTime) * ROLL_W)) : -1;
+
+  // Render — priority: note > playhead > CC > empty
   const rows = [];
   for (let r = 0; r < ROLL_ROWS; r++) {
     let line = '  ';
     for (let c = 0; c < ROLL_W; c++) {
-      if (grid[r][c] === 1) line += '█';
-      else if (grid[r][c] === 2) line += '│';
+      if (noteGrid[r][c]) line += '█';
+      else if (c === headCol) line += '│';
+      else if (ccGrid[r][c] >= 0) line += '·';
       else line += ' ';
     }
     rows.push(line);
@@ -459,8 +495,9 @@ function render() {
   if (recordedSpeed !== 100) tags.push('[REC@' + recordedSpeed + '%]');
   const tagsStr = tags.length > 0 ? '  ' + tags.join(' ') : '';
 
-  // Note count
+  // Event counts
   const noteCount = sequence.filter(e => (e.data[0] & 0xF0) === 0x90 && e.data[2] > 0).length;
+  const ccCount = sequence.filter(e => (e.data[0] & 0xF0) === 0xB0).length;
 
   // Build display — entire frame rendered in one pre
   const lines = [];
@@ -487,7 +524,7 @@ function render() {
   lines.push(lpad(''));
 
   // Status info
-  lines.push(lpad('  STATUS: ' + statusTxt.padEnd(14) + 'NOTES: ' + String(noteCount).padStart(5)));
+  lines.push(lpad('  STATUS: ' + statusTxt.padEnd(12) + '  N:' + String(noteCount).padStart(5) + '  CC:' + String(ccCount).padStart(4)));
   lines.push(lpad('  SPEED:  ' + String(speedPct).padStart(3) + '%' + tagsStr));
 
   // Last note
@@ -496,6 +533,12 @@ function render() {
     lines.push(lpad('  NOTE:   ' + lastNoteDisplay.name.padEnd(6) + 'VEL: ' + String(lastNoteDisplay.vel).padStart(3) + '  CH: ' + String(lastNoteDisplay.ch).padStart(2) + '  ' + actChar));
   } else {
     lines.push(lpad('  NOTE:   --'));
+  }
+
+  if (lastCCDisplay) {
+    lines.push(lpad('  CC:     ' + String(lastCCDisplay.cc).padEnd(6) + 'VAL: ' + String(lastCCDisplay.val).padStart(3) + '  CH: ' + String(lastCCDisplay.ch).padStart(2)));
+  } else {
+    lines.push(lpad('  CC:     --'));
   }
 
   if (errorMsg) {
@@ -668,21 +711,46 @@ function onMidiMessage(e) {
   // MIDI thru: always pass input to output
   sendMidi(data);
 
-  // Update display for notes
+  // Update display for notes and CCs
   const type = status & 0xF0;
   const ch = (status & 0x0F) + 1;
   if (type === 0x90 && data[2] > 0) {
     lastNoteDisplay = { name: midiNoteName(data[1]), vel: data[2], ch };
     noteActivity = 1.0;
+  } else if (type === 0xB0) {
+    lastCCDisplay = { cc: data[1], val: data[2], ch };
   }
 
   // Record into sequence
   if (state === 'recording' || state === 'overdubbing') {
     const elapsed = (performance.now() - transportStartTime) * playbackRate;
     let timeMs = transportOffset + elapsed;
+
+    const noteNum = data[1];
+    const channel = status & 0x0F;
+    const noteKey = noteNum * 16 + channel;
+
     if (state === 'overdubbing' && loopLengthMs > 0) {
-      timeMs = timeMs % loopLengthMs;
+      const wrappedTime = timeMs % loopLengthMs;
+
+      if ((type === 0x80 || (type === 0x90 && data[2] === 0)) && activeNotes.has(noteKey)) {
+        const noteOnTime = activeNotes.get(noteKey).time;
+        timeMs = wrappedTime < noteOnTime ? loopLengthMs : wrappedTime;
+        activeNotes.delete(noteKey);
+      } else {
+        timeMs = wrappedTime;
+        if (type === 0x90 && data[2] > 0) {
+          activeNotes.set(noteKey, { note: noteNum, ch: channel, time: wrappedTime });
+        }
+      }
+    } else {
+      if (type === 0x90 && data[2] > 0) {
+        activeNotes.set(noteKey, { note: noteNum, ch: channel });
+      } else if (type === 0x80 || (type === 0x90 && data[2] === 0)) {
+        activeNotes.delete(noteKey);
+      }
     }
+
     sequence.push({ time: timeMs, data: new Uint8Array(data) });
   }
 }
@@ -709,6 +777,13 @@ function sendMidi(data, applyTranspose) {
 function finishRecording() {
   const elapsed = (performance.now() - transportStartTime) * playbackRate;
   loopLengthMs = transportOffset + elapsed;
+  for (const [key, info] of activeNotes) {
+    sequence.push({
+      time: loopLengthMs,
+      data: new Uint8Array([0x80 | info.ch, info.note, 0])
+    });
+  }
+  activeNotes.clear();
   state = 'idle';
 }
 
@@ -819,6 +894,7 @@ function stopAll() {
   }
   cancelScheduled();
   allNotesOff();
+  activeNotes.clear();
   state = 'idle';
   transportOffset = 0;
   errorMsg = '';
@@ -859,6 +935,16 @@ function startPlayback() {
   scheduleEvents();
 }
 
+function updatePlaybackDisplay(data) {
+  const type = data[0] & 0xF0;
+  if (type === 0x90 && data[2] > 0) {
+    lastNoteDisplay = { name: midiNoteName(data[1]), vel: data[2], ch: (data[0] & 0x0F) + 1 };
+    noteActivity = 1.0;
+  } else if (type === 0xB0) {
+    lastCCDisplay = { cc: data[1], val: data[2], ch: (data[0] & 0x0F) + 1 };
+  }
+}
+
 function scheduleEvents() {
   if (state !== 'playing' && state !== 'overdubbing') return;
   if (loopLengthMs <= 0) return;
@@ -878,11 +964,7 @@ function scheduleEvents() {
         if (nextDelay > 0 && nextDelay < (loopLengthMs / playbackRate) + 100) {
           const id = setTimeout(() => {
             sendMidi(event.data, true);
-            const type = event.data[0] & 0xF0;
-            if (type === 0x90 && event.data[2] > 0) {
-              lastNoteDisplay = { name: midiNoteName(event.data[1]), vel: event.data[2], ch: (event.data[0] & 0x0F) + 1 };
-              noteActivity = 1.0;
-            }
+            updatePlaybackDisplay(event.data);
           }, nextDelay);
           scheduledTimeouts.push(id);
         }
@@ -893,11 +975,7 @@ function scheduleEvents() {
 
     const id = setTimeout(() => {
       sendMidi(event.data, true);
-      const type = event.data[0] & 0xF0;
-      if (type === 0x90 && event.data[2] > 0) {
-        lastNoteDisplay = { name: midiNoteName(event.data[1]), vel: event.data[2], ch: (event.data[0] & 0x0F) + 1 };
-        noteActivity = 1.0;
-      }
+      updatePlaybackDisplay(event.data);
     }, Math.max(0, delayMs));
     scheduledTimeouts.push(id);
   }
@@ -907,6 +985,7 @@ function scheduleEvents() {
     const nextLoopStart = loopStart + loopLengthMs;
     const nextLoopDelay = (nextLoopStart - currentPos) / playbackRate;
     playbackLoopTimeout = setTimeout(() => {
+      allNotesOff();
       transportOffset = 0;
       transportStartTime = performance.now();
       scheduleEvents();
@@ -1017,6 +1096,8 @@ function eraseTape() {
   transportOffset = 0;
   transpose = 0;
   lastNoteDisplay = null;
+  lastCCDisplay = null;
+  activeNotes.clear();
   speedPct = 100;
   recordedSpeed = 100;
   playbackRate = 1.0;
