@@ -413,6 +413,8 @@ let recordSpeed = 1.0;  // speed the tape was recorded at
 let eraseArmed = false;
 let eraseTimeout = null;
 let punchInOffset = 0;  // seconds into tape where punch-in started
+let punchInBuffer = null;  // saved original tape for punch-out splice
+let isPunchIn = false;
 
 const REELS = [
   ['╭───────╮','│   │   │','│───●───│','│   │   │','╰───────╯'],
@@ -550,7 +552,7 @@ function render() {
         statusLine2 = fmtStr;
         break;
       case 'recording':
-        statusTxt = '● REC';
+        statusTxt = isPunchIn ? '● PUNCH IN' : '● REC';
         statusLine2 = fmtStr;
         break;
       case 'stopped':
@@ -865,21 +867,23 @@ async function toggleRecord() {
     rawVuR = 0;
   }
 
-  // From stopped with audio on tape: punch-in (trim tape to playhead, record from there)
+  // From stopped with audio on tape: punch-in (record over a section, preserve the rest)
   if (state === 'stopped' && chunks.length > 0) {
     calcPlaybackDuration();
     punchInOffset = playbackOffset >= playbackDuration ? playbackDuration : playbackOffset;
 
+    // Save the full original tape for punch-out splice
+    punchInBuffer = getMergedBuffer();
+    isPunchIn = true;
+
     // Trim existing tape to the punch-in point
-    const merged = getMergedBuffer();
     const keepFrames = Math.floor(punchInOffset * sampleRate);
     const keepSamples = keepFrames * 2;  // interleaved stereo
-    if (keepSamples > 0 && keepSamples < merged.length) {
-      chunks = [merged.slice(0, keepSamples)];
+    if (keepSamples > 0 && keepSamples < punchInBuffer.length) {
+      chunks = [punchInBuffer.slice(0, keepSamples)];
     } else if (keepSamples <= 0) {
       chunks = [];
     }
-    // If keepSamples >= merged.length, tape is untouched — recording appends to end
 
     elapsed = punchInOffset * 1000;
     state = 'recording';
@@ -897,10 +901,28 @@ async function toggleRecord() {
   loadedFileName = '';
   recordSpeed = playSpeed;
   punchInOffset = 0;
+  punchInBuffer = null;
+  isPunchIn = false;
   state = 'recording';
   recordStart = Date.now();
   errorMsg = '';
   updateButtons();
+}
+
+function finishPunchIn() {
+  if (!isPunchIn || !punchInBuffer) return;
+  const currentMerged = getMergedBuffer();
+  const currentLen = currentMerged.length;
+  const origLen = punchInBuffer.length;
+  if (currentLen < origLen) {
+    const combined = new Float32Array(origLen);
+    combined.set(currentMerged, 0);
+    combined.set(punchInBuffer.subarray(currentLen), currentLen);
+    chunks = [combined];
+  }
+  playbackOffset = (currentLen / 2) / sampleRate;
+  punchInBuffer = null;
+  isPunchIn = false;
 }
 
 function stopAll() {
@@ -910,12 +932,14 @@ function stopAll() {
   }
   if (state === 'recording') {
     elapsed += Date.now() - recordStart;
+    const wasPunchIn = isPunchIn;
+    finishPunchIn();
     state = 'stopped';
     rawVuL = 0;
     rawVuR = 0;
     calcPlaybackDuration();
     elapsed = playbackDuration * 1000;
-    playbackOffset = 0;
+    if (!wasPunchIn) playbackOffset = 0;
   } else if (state === 'playing') {
     killPlaybackSource();
     const playedFor = (Date.now() - playbackStartTime) / 1000 * (playSpeed / recordSpeed);
@@ -975,6 +999,7 @@ function killPlaybackSource() {
 async function playBack() {
   if (state === 'recording') {
     elapsed += Date.now() - recordStart;
+    finishPunchIn();
     state = 'stopped';
     rawVuL = 0;
     rawVuR = 0;
@@ -1362,6 +1387,8 @@ function eraseTape() {
   playbackDuration = 0;
   recordSpeed = 1.0;
   punchInOffset = 0;
+  punchInBuffer = null;
+  isPunchIn = false;
   loadedFileName = '';
   rawVuL = 0;
   rawVuR = 0;
