@@ -337,6 +337,13 @@ let canvasW = 0, canvasH = 0;
 let isDragging = false;
 let dragStartSample = 0;
 
+const PEAK_BLOCK = 256;
+let peakCache = null;
+let peakCacheKey = null;
+let monoMixCache = null;
+let monoMixCacheKey = null;
+let waveformImageCache = null;
+
 // ── DISPLAY HELPERS ───────────────────────────────
 function pad(s) { return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║'; }
 function center(s) { const l = Math.floor((W - s.length) / 2); return '║' + ' '.repeat(l) + s + ' '.repeat(W - s.length - l) + '║'; }
@@ -397,7 +404,7 @@ function render() {
         cursorPos = playToPos;
       }
     }
-    drawWaveform();
+    redrawCursor();
   }
 
   // Time display
@@ -495,8 +502,85 @@ function render() {
   requestAnimationFrame(render);
 }
 
+// ── PEAK CACHE & DRAWING HELPERS ─────────────────
+function buildPeakCache() {
+  if (!audioData) { peakCache = null; peakCacheKey = null; return; }
+  const len = audioData.left.length;
+  const numBlocks = Math.ceil(len / PEAK_BLOCK);
+  const lMin = new Float32Array(numBlocks), lMax = new Float32Array(numBlocks);
+  const rMin = new Float32Array(numBlocks), rMax = new Float32Array(numBlocks);
+  const mMin = new Float32Array(numBlocks), mMax = new Float32Array(numBlocks);
+  for (let b = 0; b < numBlocks; b++) {
+    const s = b * PEAK_BLOCK;
+    const e = Math.min(s + PEAK_BLOCK, len);
+    let ln = 0, lx = 0, rn = 0, rx = 0, mn = 0, mx = 0;
+    for (let i = s; i < e; i++) {
+      const l = audioData.left[i], r = audioData.right[i], m = (l + r) * 0.5;
+      if (l < ln) ln = l; if (l > lx) lx = l;
+      if (r < rn) rn = r; if (r > rx) rx = r;
+      if (m < mn) mn = m; if (m > mx) mx = m;
+    }
+    lMin[b] = ln; lMax[b] = lx;
+    rMin[b] = rn; rMax[b] = rx;
+    mMin[b] = mn; mMax[b] = mx;
+  }
+  peakCache = {
+    left: { min: lMin, max: lMax },
+    right: { min: rMin, max: rMax },
+    mono: { min: mMin, max: mMax }
+  };
+  peakCacheKey = audioData.left;
+}
+
+function ensurePeakCache() {
+  if (!audioData) { peakCache = null; return; }
+  if (peakCache && peakCacheKey === audioData.left) return;
+  buildPeakCache();
+}
+
+function invalidateCaches() {
+  peakCache = null;
+  peakCacheKey = null;
+  monoMixCache = null;
+  monoMixCacheKey = null;
+  waveformImageCache = null;
+}
+
+function drawCursorOverlay() {
+  if (!audioData || viewEnd <= viewStart) return;
+  const w = canvasW, h = canvasH, rulerH = 18;
+  const numVisible = viewEnd - viewStart;
+  const cxRaw = (cursorPos - viewStart) / numVisible * w;
+  const cx = Math.min(cxRaw, w - 1);
+  if (cx >= 0) {
+    let selX1 = -1, selX2 = -1;
+    if (selStart !== selEnd) {
+      selX1 = Math.max(0, Math.round((selStart - viewStart) / numVisible * w));
+      selX2 = Math.min(w, Math.round((selEnd - viewStart) / numVisible * w));
+    }
+    const inSel = selX1 >= 0 && cx >= selX1 && cx <= selX2;
+    waveCtx.strokeStyle = inSel ? '#000000' : '#ffffff';
+    waveCtx.lineWidth = 1;
+    waveCtx.beginPath();
+    waveCtx.moveTo(Math.round(cx) + 0.5, 0);
+    waveCtx.lineTo(Math.round(cx) + 0.5, h - rulerH);
+    waveCtx.stroke();
+  }
+}
+
+function redrawCursor() {
+  if (!waveCtx) return;
+  if (waveformImageCache) {
+    waveCtx.putImageData(waveformImageCache, 0, 0);
+    drawCursorOverlay();
+  } else {
+    drawWaveform();
+  }
+}
+
 // ── WAVEFORM DRAWING ──────────────────────────────
 function resizeCanvas() {
+  waveformImageCache = null;
   const container = document.getElementById('wave-inner');
   canvasW = container.clientWidth;
   canvasH = 300;
@@ -515,13 +599,17 @@ function isMonoMode() {
 
 function getMonoMix() {
   if (!audioData) return null;
+  if (monoMixCache && monoMixCacheKey === audioData.left) return monoMixCache;
   const mix = new Float32Array(audioData.left.length);
   for (let i = 0; i < mix.length; i++) mix[i] = (audioData.left[i] + audioData.right[i]) * 0.5;
+  monoMixCache = mix;
+  monoMixCacheKey = audioData.left;
   return mix;
 }
 
 function drawWaveform() {
   if (!waveCtx) return;
+  ensurePeakCache();
   const w = canvasW;
   const h = canvasH;
   const rulerH = 18;
@@ -561,21 +649,7 @@ function drawWaveform() {
         waveCtx.restore();
       }
 
-      drawChannel(monoData, 0, chH, w, numVisible, selX1, selX2);
-
-      // Cursor
-      const cxRaw = (cursorPos - viewStart) / numVisible * w;
-      const cx = Math.min(cxRaw, w - 1);
-      if (cx >= 0) {
-        const inSel = selX1 >= 0 && cx >= selX1 && cx <= selX2;
-        waveCtx.strokeStyle = inSel ? '#000000' : '#ffffff';
-        waveCtx.lineWidth = 1;
-        waveCtx.beginPath();
-        waveCtx.moveTo(Math.round(cx) + 0.5, 0);
-        waveCtx.lineTo(Math.round(cx) + 0.5, h - rulerH);
-        waveCtx.stroke();
-      }
-
+      drawChannel(monoData, peakCache ? peakCache.mono : null, 0, chH, w, numVisible, selX1, selX2);
       drawRuler(w, h, rulerH, numVisible);
     } else {
       waveCtx.fillStyle = '#333333';
@@ -642,24 +716,8 @@ function drawWaveform() {
         waveCtx.restore();
       }
 
-      // Draw channels with inverted colors in selection
-      drawChannel(audioData.left, 0, chH, w, numVisible, selX1, selX2);
-      drawChannel(audioData.right, chH + 1, chH, w, numVisible, selX1, selX2);
-
-      // Cursor — clamp to visible area so it doesn't vanish at the edge
-      const cxRaw = (cursorPos - viewStart) / numVisible * w;
-      const cx = Math.min(cxRaw, w - 1);
-      if (cx >= 0) {
-        const inSel = selX1 >= 0 && cx >= selX1 && cx <= selX2;
-        waveCtx.strokeStyle = inSel ? '#000000' : '#ffffff';
-        waveCtx.lineWidth = 1;
-        waveCtx.beginPath();
-        waveCtx.moveTo(Math.round(cx) + 0.5, 0);
-        waveCtx.lineTo(Math.round(cx) + 0.5, h - rulerH);
-        waveCtx.stroke();
-      }
-
-      // Time ruler
+      drawChannel(audioData.left, peakCache ? peakCache.left : null, 0, chH, w, numVisible, selX1, selX2);
+      drawChannel(audioData.right, peakCache ? peakCache.right : null, chH + 1, chH, w, numVisible, selX1, selX2);
       drawRuler(w, h, rulerH, numVisible);
     } else {
       // Empty state
@@ -677,6 +735,8 @@ function drawWaveform() {
     waveCtx.fillText('L', 4, 12);
     waveCtx.fillText('R', 4, chH + 13);
   }
+  waveformImageCache = waveCtx.getImageData(0, 0, waveformCanvas.width, waveformCanvas.height);
+  drawCursorOverlay();
 }
 
 function getGainAtSample(i) {
@@ -704,11 +764,20 @@ function getGainAtSample(i) {
   return gain;
 }
 
-function drawChannel(data, yOffset, height, width, numVisible, selX1, selX2) {
+function drawChannel(data, peaks, yOffset, height, width, numVisible, selX1, selX2) {
   const centerY = yOffset + height / 2;
   const amp = height / 2 - 2;
   const samplesPerPixel = numVisible / width;
   const hasSel = selX1 >= 0;
+
+  const gain = getOutputGainLinear();
+  const gainActive = gain !== 1 && selStart !== selEnd;
+  const xfadeMs = gainActive ? (parseInt(document.getElementById('xfade-len').value) || 0) : 0;
+  const xfadeSamples = Math.round(xfadeMs * SAMPLE_RATE / 1000);
+  const selLen = selEnd - selStart;
+  const fadeSamples = gainActive ? Math.min(xfadeSamples, Math.floor(selLen / 2)) : 0;
+
+  const usePeaks = peaks && samplesPerPixel >= PEAK_BLOCK && !gainActive;
 
   waveCtx.globalAlpha = 0.8;
 
@@ -716,17 +785,35 @@ function drawChannel(data, yOffset, height, width, numVisible, selX1, selX2) {
     const s0 = viewStart + Math.floor(px * samplesPerPixel);
     const s1 = viewStart + Math.ceil((px + 1) * samplesPerPixel);
     let min = 0, max = 0;
-    for (let i = s0; i < s1 && i < data.length; i++) {
-      const s = data[i] * getGainAtSample(i);
-      if (s < min) min = s;
-      if (s > max) max = s;
+
+    if (usePeaks) {
+      const b0 = Math.floor(s0 / PEAK_BLOCK);
+      const b1 = Math.min(Math.ceil(s1 / PEAK_BLOCK), peaks.min.length);
+      for (let b = b0; b < b1; b++) {
+        if (peaks.min[b] < min) min = peaks.min[b];
+        if (peaks.max[b] > max) max = peaks.max[b];
+      }
+    } else {
+      for (let i = s0; i < s1 && i < data.length; i++) {
+        let s = data[i];
+        if (gainActive && i >= selStart && i < selEnd) {
+          let g = gain;
+          if (fadeSamples > 0 && i < selStart + fadeSamples) {
+            g = 1 + (gain - 1) * ((i - selStart) / fadeSamples);
+          } else if (fadeSamples > 0 && i >= selEnd - fadeSamples) {
+            g = 1 + (gain - 1) * ((selEnd - 1 - i) / fadeSamples);
+          }
+          s *= g;
+        }
+        if (s < min) min = s;
+        if (s > max) max = s;
+      }
     }
-    // Clamp to ±1 for display (clipping visible as flat tops)
+
     min = Math.max(-1, min);
     max = Math.min(1, max);
     const top = centerY - max * amp;
     const bot = centerY - min * amp;
-    // Invert color inside selection
     waveCtx.fillStyle = (hasSel && px >= selX1 && px < selX2) ? '#000000' : '#ffffff';
     waveCtx.fillRect(px, top, 1, Math.max(1, bot - top));
   }
@@ -1352,6 +1439,7 @@ function silenceSelection() {
     audioData.left[i] = 0;
     audioData.right[i] = 0;
   }
+  invalidateCaches();
   drawWaveform();
 }
 
@@ -1402,6 +1490,7 @@ function fadeIn() {
     audioData.left[selStart + i] *= gain;
     audioData.right[selStart + i] *= gain;
   }
+  invalidateCaches();
   drawWaveform();
 }
 
@@ -1415,6 +1504,7 @@ function fadeOut() {
     audioData.left[selStart + i] *= gain;
     audioData.right[selStart + i] *= gain;
   }
+  invalidateCaches();
   drawWaveform();
 }
 
@@ -1429,6 +1519,7 @@ function reverseAudio() {
     let tmp = L[i]; L[i] = L[j]; L[j] = tmp;
     tmp = R[i]; R[i] = R[j]; R[j] = tmp;
   }
+  invalidateCaches();
   drawWaveform();
 }
 
@@ -1448,6 +1539,7 @@ function normalize() {
     audioData.left[i] *= gain;
     audioData.right[i] *= gain;
   }
+  invalidateCaches();
   drawWaveform();
 }
 
@@ -1530,6 +1622,7 @@ function commitGain() {
   // Reset slider to 0 dB
   document.getElementById('output-slider').value = 0;
   document.getElementById('output-readout').textContent = '0 dB';
+  invalidateCaches();
   drawWaveform();
 }
 
