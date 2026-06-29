@@ -953,6 +953,23 @@ function initCanvasEvents() {
   }, { passive: false });
   document.addEventListener('touchend', pointerUp);
 
+  // Drag-and-drop file loading
+  const waveSection = document.getElementById('waveform-section');
+  waveSection.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    waveSection.style.outline = '2px solid #ffffff';
+  });
+  waveSection.addEventListener('dragleave', () => {
+    waveSection.style.outline = '';
+  });
+  waveSection.addEventListener('drop', (e) => {
+    e.preventDefault();
+    waveSection.style.outline = '';
+    const file = e.dataTransfer.files[0];
+    if (file) loadFile(file);
+  });
+
   // Zoom with scroll wheel
   waveformCanvas.addEventListener('wheel', (e) => {
     if (!audioData) return;
@@ -1805,10 +1822,9 @@ async function saveWav() {
 }
 
 // ── LOAD ──────────────────────────────────────────
-async function loadAudioFile(e) {
-  const file = e.target.files[0];
+async function loadFile(file) {
   if (!file) return;
-  if (state === 'recording') { errorMsg = '?ERR: STOP FIRST'; e.target.value = ''; return; }
+  if (state === 'recording') { errorMsg = '?ERR: STOP FIRST'; return; }
   if (state === 'playing') stopAll();
 
   errorMsg = 'LOADING...';
@@ -1817,11 +1833,9 @@ async function loadAudioFile(e) {
     const arrayBuf = await file.arrayBuffer();
     let decoded = await audioCtx.decodeAudioData(arrayBuf);
 
-    // Store original format info
     origSampleRate = decoded.sampleRate;
     origChannels = decoded.numberOfChannels;
 
-    // Resample if needed
     if (decoded.sampleRate !== SAMPLE_RATE) {
       const ratio = SAMPLE_RATE / decoded.sampleRate;
       const newLen = Math.round(decoded.length * ratio);
@@ -1851,6 +1865,10 @@ async function loadAudioFile(e) {
   } catch (err) {
     errorMsg = '?ERR: UNSUPPORTED FORMAT';
   }
+}
+
+async function loadAudioFile(e) {
+  await loadFile(e.target.files[0]);
   e.target.value = '';
 }
 
