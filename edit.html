@@ -343,6 +343,10 @@ let peakCacheKey = null;
 let monoMixCache = null;
 let monoMixCacheKey = null;
 let waveformImageCache = null;
+let dragRafPending = false;
+let cachedPlayBuffer = null;
+let cachedPlayDataRef = null;
+let cachedPlaySettings = '';
 
 // ── DISPLAY HELPERS ───────────────────────────────
 function pad(s) { return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║'; }
@@ -396,14 +400,14 @@ function render() {
   // Update cursor during playback
   if (state === 'playing' && audioData) {
     const elapsed = audioCtx.currentTime - playStartTime;
-    cursorPos = playFromPos + Math.round(elapsed * SAMPLE_RATE);
-    if (cursorPos >= playToPos) {
-      if (loopEnabled) {
-        cursorPos = playFromPos;
-      } else {
-        cursorPos = playToPos;
-      }
+    let pos = playFromPos + Math.round(elapsed * SAMPLE_RATE);
+    if (loopEnabled && playToPos > playFromPos) {
+      const loopLen = playToPos - playFromPos;
+      pos = playFromPos + ((pos - playFromPos) % loopLen);
+    } else if (pos >= playToPos) {
+      pos = playToPos;
     }
+    cursorPos = pos;
     redrawCursor();
   }
 
@@ -544,6 +548,9 @@ function invalidateCaches() {
   monoMixCache = null;
   monoMixCacheKey = null;
   waveformImageCache = null;
+  cachedPlayBuffer = null;
+  cachedPlayDataRef = null;
+  cachedPlaySettings = '';
 }
 
 function drawCursorOverlay() {
@@ -607,7 +614,7 @@ function getMonoMix() {
   return mix;
 }
 
-function drawWaveform() {
+function drawWaveform(skipCache) {
   if (!waveCtx) return;
   ensurePeakCache();
   const w = canvasW;
@@ -735,7 +742,9 @@ function drawWaveform() {
     waveCtx.fillText('L', 4, 12);
     waveCtx.fillText('R', 4, chH + 13);
   }
-  waveformImageCache = waveCtx.getImageData(0, 0, waveformCanvas.width, waveformCanvas.height);
+  if (!skipCache) {
+    waveformImageCache = waveCtx.getImageData(0, 0, waveformCanvas.width, waveformCanvas.height);
+  }
   drawCursorOverlay();
 }
 
@@ -897,13 +906,20 @@ function initCanvasEvents() {
     if (sample < dragStartSample) { selStart = sample; selEnd = dragStartSample; }
     else { selStart = dragStartSample; selEnd = sample; }
     cursorPos = sample;
-    drawWaveform();
-    updateEditButtons();
+    if (!dragRafPending) {
+      dragRafPending = true;
+      requestAnimationFrame(() => {
+        dragRafPending = false;
+        drawWaveform(true);
+        updateEditButtons();
+      });
+    }
   }
 
   function pointerUp() {
     if (isDragging) {
       isDragging = false;
+      drawWaveform();
       updateEditButtons();
       if (state === 'playing') {
         if (selStart !== selEnd) play(selStart, selEnd);
@@ -1204,33 +1220,44 @@ async function play(from, to) {
   if (audioCtx.state === 'suspended') audioCtx.resume();
 
   const targetRate = parseInt(document.getElementById('save-rate').value);
-  let fmt = applyFormatToBuffer(audioData.left, audioData.right);
-  let playLeft = fmt.left;
-  let playRight = fmt.right;
+  const bps = document.getElementById('save-bits').value;
+  const mono = isMonoMode();
+  const gain = getOutputGainLinear();
+  const settingsKey = `${targetRate}_${bps}_${mono}_${gain}_${selStart}_${selEnd}`;
 
-  // Sample rate round-trip: resample down then up to simulate quality loss
-  if (targetRate !== SAMPLE_RATE) {
-    const downLen = Math.round(audioData.left.length * (targetRate / SAMPLE_RATE));
-    const offDown = new OfflineAudioContext(2, downLen, targetRate);
-    const srcDown = offDown.createBufferSource();
-    const bufDown = offDown.createBuffer(2, playLeft.length, SAMPLE_RATE);
-    bufDown.getChannelData(0).set(playLeft);
-    bufDown.getChannelData(1).set(playRight);
-    srcDown.buffer = bufDown; srcDown.connect(offDown.destination); srcDown.start(0);
-    const rendered = await offDown.startRendering();
-    // Resample back up to working rate
-    const upLen = Math.round(rendered.length * (SAMPLE_RATE / targetRate));
-    const offUp = new OfflineAudioContext(2, upLen, SAMPLE_RATE);
-    const srcUp = offUp.createBufferSource();
-    srcUp.buffer = rendered; srcUp.connect(offUp.destination); srcUp.start(0);
-    const final = await offUp.startRendering();
-    playLeft = final.getChannelData(0);
-    playRight = final.getChannelData(1);
+  let buf;
+  if (cachedPlayBuffer && cachedPlayDataRef === audioData.left && cachedPlaySettings === settingsKey) {
+    buf = cachedPlayBuffer;
+  } else {
+    let fmt = applyFormatToBuffer(audioData.left, audioData.right);
+    let playLeft = fmt.left;
+    let playRight = fmt.right;
+
+    if (targetRate !== SAMPLE_RATE) {
+      const downLen = Math.round(audioData.left.length * (targetRate / SAMPLE_RATE));
+      const offDown = new OfflineAudioContext(2, downLen, targetRate);
+      const srcDown = offDown.createBufferSource();
+      const bufDown = offDown.createBuffer(2, playLeft.length, SAMPLE_RATE);
+      bufDown.getChannelData(0).set(playLeft);
+      bufDown.getChannelData(1).set(playRight);
+      srcDown.buffer = bufDown; srcDown.connect(offDown.destination); srcDown.start(0);
+      const rendered = await offDown.startRendering();
+      const upLen = Math.round(rendered.length * (SAMPLE_RATE / targetRate));
+      const offUp = new OfflineAudioContext(2, upLen, SAMPLE_RATE);
+      const srcUp = offUp.createBufferSource();
+      srcUp.buffer = rendered; srcUp.connect(offUp.destination); srcUp.start(0);
+      const final = await offUp.startRendering();
+      playLeft = final.getChannelData(0);
+      playRight = final.getChannelData(1);
+    }
+
+    buf = audioCtx.createBuffer(2, playLeft.length, SAMPLE_RATE);
+    buf.getChannelData(0).set(playLeft);
+    buf.getChannelData(1).set(playRight);
+    cachedPlayBuffer = buf;
+    cachedPlayDataRef = audioData.left;
+    cachedPlaySettings = settingsKey;
   }
-
-  const buf = audioCtx.createBuffer(2, playLeft.length, SAMPLE_RATE);
-  buf.getChannelData(0).set(playLeft);
-  buf.getChannelData(1).set(playRight);
 
   playSource = audioCtx.createBufferSource();
   playSource.buffer = buf;
@@ -1239,22 +1266,25 @@ async function play(from, to) {
   const startOffset = from / SAMPLE_RATE;
   const duration = (to - from) / SAMPLE_RATE;
 
+  playSource.loopStart = startOffset;
+  playSource.loopEnd = startOffset + duration;
+  playSource.loop = loopEnabled;
+
   playSource.onended = () => {
     if (state === 'playing') {
-      if (loopEnabled) {
-        cursorPos = playFromPos;
-        play(playFromPos, playToPos);
-      } else {
-        cursorPos = playToPos;
-        state = 'stopped';
-        rawVuL = 0; rawVuR = 0;
-        drawWaveform();
-        updateButtons();
-      }
+      cursorPos = playToPos;
+      state = 'stopped';
+      rawVuL = 0; rawVuR = 0;
+      drawWaveform();
+      updateButtons();
     }
   };
 
-  playSource.start(0, startOffset, duration);
+  if (loopEnabled) {
+    playSource.start(0, startOffset);
+  } else {
+    playSource.start(0, startOffset, duration);
+  }
   playStartTime = audioCtx.currentTime;
   playFromPos = from;
   playToPos = to;
@@ -1312,6 +1342,9 @@ function goToEnd() {
 function toggleLoop() {
   loopEnabled = !loopEnabled;
   document.getElementById('btn-loop').classList.toggle('loop-active', loopEnabled);
+  if (state === 'playing' && playSource) {
+    playSource.loop = loopEnabled;
+  }
 }
 
 // ── EDIT OPERATIONS ───────────────────────────────
