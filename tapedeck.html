@@ -415,6 +415,13 @@ let eraseTimeout = null;
 let punchInOffset = 0;  // seconds into tape where punch-in started
 let punchInBuffer = null;  // saved original tape for punch-out splice
 let isPunchIn = false;
+let cachedAudioBuf = null;
+let cachedReversedBuf = null;
+let cachedChunksLen = -1;
+let vuBufL = null;
+let vuBufR = null;
+let cachedTotalSamples = 0;
+let cachedTotalSamplesDirty = true;
 
 const REELS = [
   ['╭───────╮','│   │   │','│───●───│','│   │   │','╰───────╯'],
@@ -422,6 +429,16 @@ const REELS = [
   ['╭───────╮','│   │   │','│───●───│','│   │   │','╰───────╯'],
   ['╭───────╮','│ ╱   ╲ │','│   ●   │','│ ╲   ╱ │','╰───────╯'],
 ];
+
+// Cached DOM refs
+const elDisplay = document.getElementById('display');
+const elFrameMid = document.getElementById('frame-mid');
+const elFrameBot = document.getElementById('frame-bot');
+const elControlPanel = document.getElementById('control-panel');
+const elBorderLeft = document.getElementById('border-left');
+const elBorderRight = document.getElementById('border-right');
+let cachedBorderLines = 0;
+let cachedBorderStr = '';
 
 function pad(s) {
   return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║';
@@ -480,10 +497,10 @@ function render() {
   // Playback/scrub VU from analyser nodes
   if ((state === 'playing' || scrubbing) && playbackAnalyserL && playbackAnalyserR) {
     const bufLen = playbackAnalyserL.fftSize;
-    const dataL = new Float32Array(bufLen);
-    const dataR = new Float32Array(bufLen);
-    playbackAnalyserL.getFloatTimeDomainData(dataL);
-    playbackAnalyserR.getFloatTimeDomainData(dataR);
+    if (!vuBufL || vuBufL.length !== bufLen) { vuBufL = new Float32Array(bufLen); vuBufR = new Float32Array(bufLen); }
+    playbackAnalyserL.getFloatTimeDomainData(vuBufL);
+    playbackAnalyserR.getFloatTimeDomainData(vuBufR);
+    const dataL = vuBufL, dataR = vuBufR;
     let sumL = 0, sumR = 0;
     for (let i = 0; i < bufLen; i++) {
       sumL += dataL[i] * dataL[i];
@@ -537,7 +554,7 @@ function render() {
   const gap = 22;
 
   let statusTxt, statusLine2;
-  const totalSamples = chunks.reduce((s, c) => s + c.length, 0);
+  const totalSamples = getTotalSamplesCount();
 
   const rateK = sampleRate >= 1000 ? (sampleRate / 1000) + 'k' : sampleRate;
   const fmtStr = `${rateK}/${bitDepth}bit STEREO WAV`;
@@ -609,17 +626,19 @@ function render() {
 
   lines.push(pad(''));
 
-  document.getElementById('display').textContent = lines.join('\n');
-  document.getElementById('frame-mid').textContent = '╠' + '═'.repeat(W) + '╣';
-  document.getElementById('frame-bot').textContent = '╚' + '═'.repeat(W) + '╝';
+  elDisplay.textContent = lines.join('\n');
+  elFrameMid.textContent = '╠' + '═'.repeat(W) + '╣';
+  elFrameBot.textContent = '╚' + '═'.repeat(W) + '╝';
 
   // Fill side borders with ║ characters matching the panel height
-  const panel = document.getElementById('control-panel');
   const lineH = 21.75; // 15px * 1.45 line-height
-  const numLines = Math.ceil(panel.clientHeight / lineH) + 1;
-  const borderCol = new Array(numLines).fill('║').join('\n');
-  document.getElementById('border-left').textContent = borderCol;
-  document.getElementById('border-right').textContent = borderCol;
+  const numLines = Math.ceil(elControlPanel.clientHeight / lineH) + 1;
+  if (numLines !== cachedBorderLines) {
+    cachedBorderLines = numLines;
+    cachedBorderStr = new Array(numLines).fill('║').join('\n');
+  }
+  elBorderLeft.textContent = cachedBorderStr;
+  elBorderRight.textContent = cachedBorderStr;
 
   requestAnimationFrame(render);
 }
@@ -752,6 +771,7 @@ function onAudioProcess(e) {
       interleaved[i * 2 + 1] = right[i];
     }
     chunks.push(interleaved);
+    invalidateAudioCache();
   }
 }
 
@@ -884,6 +904,7 @@ async function toggleRecord() {
     } else if (keepSamples <= 0) {
       chunks = [];
     }
+    invalidateAudioCache();
 
     elapsed = punchInOffset * 1000;
     state = 'recording';
@@ -895,6 +916,7 @@ async function toggleRecord() {
 
   // Fresh recording (from idle or stopped-without-audio)
   chunks = [];
+  invalidateAudioCache();
   elapsed = 0;
   playbackOffset = 0;
   playbackDuration = 0;
@@ -919,6 +941,7 @@ function finishPunchIn() {
     combined.set(currentMerged, 0);
     combined.set(punchInBuffer.subarray(currentLen), currentLen);
     chunks = [combined];
+    invalidateAudioCache();
   }
   playbackOffset = (currentLen / 2) / sampleRate;
   punchInBuffer = null;
@@ -954,14 +977,27 @@ function stopAll() {
 
 // ── PLAYBACK ────────────────────────────────────────────
 
+function invalidateAudioCache() {
+  cachedAudioBuf = null;
+  cachedReversedBuf = null;
+  cachedChunksLen = -1;
+  cachedTotalSamplesDirty = true;
+}
+
+function getTotalSamplesCount() {
+  if (cachedTotalSamplesDirty) {
+    cachedTotalSamples = chunks.reduce((s, c) => s + c.length, 0);
+    cachedTotalSamplesDirty = false;
+  }
+  return cachedTotalSamples;
+}
+
 function calcPlaybackDuration() {
-  const totalSamples = chunks.reduce((s, c) => s + c.length, 0);
-  // interleaved stereo: 2 samples per frame
-  playbackDuration = (totalSamples / 2) / sampleRate;
+  playbackDuration = (getTotalSamplesCount() / 2) / sampleRate;
 }
 
 function getMergedBuffer() {
-  const totalLen = chunks.reduce((s, c) => s + c.length, 0);
+  const totalLen = getTotalSamplesCount();
   const merged = new Float32Array(totalLen);
   let off = 0;
   for (const c of chunks) { merged.set(c, off); off += c.length; }
@@ -969,6 +1005,8 @@ function getMergedBuffer() {
 }
 
 function getAudioBuffer() {
+  const totalLen = getTotalSamplesCount();
+  if (cachedAudioBuf && cachedChunksLen === totalLen) return cachedAudioBuf;
   const merged = getMergedBuffer();
   const numFrames = merged.length / 2;
   const audioBuf = audioCtx.createBuffer(2, numFrames, sampleRate);
@@ -978,6 +1016,8 @@ function getAudioBuffer() {
     chL[i] = merged[i * 2];
     chR[i] = merged[i * 2 + 1];
   }
+  cachedAudioBuf = audioBuf;
+  cachedChunksLen = totalLen;
   return audioBuf;
 }
 
@@ -1176,6 +1216,8 @@ function stopScrub() {
 }
 
 function getReversedAudioBuffer() {
+  const totalLen = getTotalSamplesCount();
+  if (cachedReversedBuf && cachedChunksLen === totalLen) return cachedReversedBuf;
   const merged = getMergedBuffer();
   const numFrames = merged.length / 2;
   const audioBuf = audioCtx.createBuffer(2, numFrames, sampleRate);
@@ -1185,6 +1227,7 @@ function getReversedAudioBuffer() {
     chL[i] = merged[(numFrames - 1 - i) * 2];
     chR[i] = merged[(numFrames - 1 - i) * 2 + 1];
   }
+  cachedReversedBuf = audioBuf;
   return audioBuf;
 }
 
@@ -1340,6 +1383,7 @@ async function loadAudioFile(e) {
     }
 
     chunks = [interleaved];
+    invalidateAudioCache();
     elapsed = (finalFrames / sampleRate) * 1000;
     calcPlaybackDuration();
     playbackOffset = 0;
@@ -1382,6 +1426,7 @@ function eraseTape() {
   document.getElementById('btn-erase').style.color = '';
   document.getElementById('btn-erase').style.borderColor = '';
   chunks = [];
+  invalidateAudioCache();
   elapsed = 0;
   playbackOffset = 0;
   playbackDuration = 0;

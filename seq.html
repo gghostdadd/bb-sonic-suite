@@ -446,6 +446,10 @@ function renderPianoRoll(posMs) {
 }
 
 // ── RENDER ────────────────────────────────────────
+const elDisplay = document.getElementById('display');
+const elControlPanel = document.getElementById('control-panel');
+let cachedBorderLines = 0;
+let cachedBorderStr = '';
 function render() {
   tick++;
 
@@ -559,11 +563,11 @@ function render() {
   // Bottom of frame
   lines.push('╚' + '═'.repeat(W) + '╝');
 
-  document.getElementById('display').textContent = lines.join('\n');
+  elDisplay.textContent = lines.join('\n');
 
   // Position the control overlay to sit over the blank rows
-  const panel = document.getElementById('control-panel');
-  const displayEl = document.getElementById('display');
+  const panel = elControlPanel;
+  const displayEl = elDisplay;
   const lineH = displayEl.scrollHeight / lines.length;
   const ctrlStartLine = lines.length - CTRL_ROWS - 1; // line after ╠═══╣
   panel.style.top = (ctrlStartLine * lineH) + 'px';

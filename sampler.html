@@ -381,6 +381,16 @@ let sampleIn = 0;     // trim start 0.0-1.0
 let sampleOut = 1;    // trim end 0.0-1.0
 let octZFlash = 0;    // flash countdown (frames)
 let octXFlash = 0;
+let vuBufL = null;
+let vuBufR = null;
+const elDisplay = document.getElementById('display');
+const elFrameMid = document.getElementById('frame-mid');
+const elFrameBot = document.getElementById('frame-bot');
+const elControlPanel = document.getElementById('control-panel');
+const elBorderLeft = document.getElementById('border-left');
+const elBorderRight = document.getElementById('border-right');
+let cachedBorderLines = 0;
+let cachedBorderStr = '';
 
 // ── DISPLAY HELPERS ────────────────────────────────
 
@@ -463,10 +473,10 @@ function render() {
   // Output VU from analysers
   if (state === 'ready' && playbackAnalyserL && playbackAnalyserR) {
     const bufLen = playbackAnalyserL.fftSize;
-    const dataL = new Float32Array(bufLen);
-    const dataR = new Float32Array(bufLen);
-    playbackAnalyserL.getFloatTimeDomainData(dataL);
-    playbackAnalyserR.getFloatTimeDomainData(dataR);
+    if (!vuBufL || vuBufL.length !== bufLen) { vuBufL = new Float32Array(bufLen); vuBufR = new Float32Array(bufLen); }
+    playbackAnalyserL.getFloatTimeDomainData(vuBufL);
+    playbackAnalyserR.getFloatTimeDomainData(vuBufR);
+    const dataL = vuBufL, dataR = vuBufR;
     let sumL = 0, sumR = 0;
     for (let i = 0; i < bufLen; i++) {
       sumL += dataL[i] * dataL[i];
@@ -667,17 +677,19 @@ function render() {
   lines.push(center(zCh + ' ◄── OCT ──► ' + xCh));
   lines.push(pad(''));
 
-  document.getElementById('display').textContent = lines.join('\n');
-  document.getElementById('frame-mid').textContent = '╠' + '═'.repeat(W) + '╣';
-  document.getElementById('frame-bot').textContent = '╚' + '═'.repeat(W) + '╝';
+  elDisplay.textContent = lines.join('\n');
+  elFrameMid.textContent = '╠' + '═'.repeat(W) + '╣';
+  elFrameBot.textContent = '╚' + '═'.repeat(W) + '╝';
 
   // Side borders
-  const panel = document.getElementById('control-panel');
   const lineH = 21.75;
-  const numLines = Math.ceil(panel.clientHeight / lineH) + 1;
-  const borderCol = new Array(numLines).fill('║').join('\n');
-  document.getElementById('border-left').textContent = borderCol;
-  document.getElementById('border-right').textContent = borderCol;
+  const numLines = Math.ceil(elControlPanel.clientHeight / lineH) + 1;
+  if (numLines !== cachedBorderLines) {
+    cachedBorderLines = numLines;
+    cachedBorderStr = new Array(numLines).fill('║').join('\n');
+  }
+  elBorderLeft.textContent = cachedBorderStr;
+  elBorderRight.textContent = cachedBorderStr;
 
   requestAnimationFrame(render);
 }

@@ -698,8 +698,8 @@ function renderLissajous() {
   // Plot new samples from L/R analysers
   if (active && !frozen && analyserL && analyserR) {
     const bufLen = analyserL.fftSize;
-    const dataL = new Float32Array(bufLen);
-    const dataR = new Float32Array(bufLen);
+    if (!lissBufL || lissBufL.length !== bufLen) { lissBufL = new Float32Array(bufLen); lissBufR = new Float32Array(bufLen); }
+    const dataL = lissBufL, dataR = lissBufR;
     analyserL.getFloatTimeDomainData(dataL);
     analyserR.getFloatTimeDomainData(dataR);
 
@@ -966,8 +966,8 @@ function miniLissajous() {
   for (let i = 0; i < miniLissGrid.length; i++) miniLissGrid[i] *= LISS_DECAY;
   if (active && !frozen && analyserL && analyserR) {
     const bufLen = analyserL.fftSize;
-    const dL = new Float32Array(bufLen);
-    const dR = new Float32Array(bufLen);
+    if (!miniLissBufL || miniLissBufL.length !== bufLen) { miniLissBufL = new Float32Array(bufLen); miniLissBufR = new Float32Array(bufLen); }
+    const dL = miniLissBufL, dR = miniLissBufR;
     analyserL.getFloatTimeDomainData(dL);
     analyserR.getFloatTimeDomainData(dR);
     for (let i = 0; i < bufLen; i += 2) {
@@ -1066,6 +1066,32 @@ function renderQuadVU() {
   ];
 }
 
+// ── PRE-ALLOCATED BUFFERS ─────────────────────────
+let vuBufFreq = null;
+let vuBufTime = null;
+let vuBufL = null;
+let vuBufR = null;
+let lufsBufL = null;
+let lufsBufR = null;
+let lissBufL = null;
+let lissBufR = null;
+let miniLissBufL = null;
+let miniLissBufR = null;
+
+// ── CACHED DOM REFS ──────────────────────────────
+const elDisplayTop = document.getElementById('display-top');
+const elDisplayBottom = document.getElementById('display-bottom');
+const elViz = document.getElementById('viz');
+const elFrameMid = document.getElementById('frame-mid');
+const elFrameBot = document.getElementById('frame-bot');
+const elVizBorderL = document.getElementById('viz-border-l');
+const elVizBorderR = document.getElementById('viz-border-r');
+const elControlPanel = document.getElementById('control-panel');
+const elBorderLeft = document.getElementById('border-left');
+const elBorderRight = document.getElementById('border-right');
+let cachedBorderLines = 0;
+let cachedBorderStr = '';
+
 // ── MAIN RENDER LOOP ───────────────────────────────
 
 function render() {
@@ -1080,16 +1106,18 @@ function render() {
   let timeData = null;
 
   if (active && analyserNode && !frozen) {
-    freqData = new Uint8Array(analyserNode.frequencyBinCount);
-    analyserNode.getByteFrequencyData(freqData);
-    timeData = new Float32Array(analyserNode.fftSize);
-    analyserNode.getFloatTimeDomainData(timeData);
+    if (!vuBufFreq || vuBufFreq.length !== analyserNode.frequencyBinCount) vuBufFreq = new Uint8Array(analyserNode.frequencyBinCount);
+    analyserNode.getByteFrequencyData(vuBufFreq);
+    freqData = vuBufFreq;
+    if (!vuBufTime || vuBufTime.length !== analyserNode.fftSize) vuBufTime = new Float32Array(analyserNode.fftSize);
+    analyserNode.getFloatTimeDomainData(vuBufTime);
+    timeData = vuBufTime;
 
     // Stereo VU from split analysers
     if (analyserL && analyserR) {
       const bufLen = analyserL.fftSize;
-      const dL = new Float32Array(bufLen);
-      const dR = new Float32Array(bufLen);
+      if (!vuBufL || vuBufL.length !== bufLen) { vuBufL = new Float32Array(bufLen); vuBufR = new Float32Array(bufLen); }
+      const dL = vuBufL, dR = vuBufR;
       analyserL.getFloatTimeDomainData(dL);
       analyserR.getFloatTimeDomainData(dR);
       let sL = 0, sR = 0;
@@ -1310,13 +1338,13 @@ function render() {
 
   // ── Apply to DOM ──
 
-  document.getElementById('display-top').textContent = topLines.join('\n');
-  const vizEl = document.getElementById('viz');
+  elDisplayTop.textContent = topLines.join('\n');
+  const vizEl = elViz;
   vizEl.style.height = ((mode === 'all') ? allVizPxH : singleVizPxH) + 'px';
   vizEl.textContent = vizLines.join('\n');
-  document.getElementById('display-bottom').textContent = bottomLines.join('\n');
-  document.getElementById('frame-mid').textContent = '╠' + '═'.repeat(W) + '╣';
-  document.getElementById('frame-bot').textContent = '╚' + '═'.repeat(W) + '╝';
+  elDisplayBottom.textContent = bottomLines.join('\n');
+  elFrameMid.textContent = '╠' + '═'.repeat(W) + '╣';
+  elFrameBot.textContent = '╚' + '═'.repeat(W) + '╝';
 
   // Side borders for viz area — cover both viz + viz-axis
   const lineH = FIXED_FONT * 1.45;
@@ -1324,15 +1352,17 @@ function render() {
   const currentAxisH = (mode === 'all') ? 6 * FIXED_FONT : FIXED_FONT;
   const vizBorderN = Math.ceil((currentVizH + currentAxisH) / lineH) + 1;
   const vizBorderCol = new Array(vizBorderN).fill('║').join('\n');
-  document.getElementById('viz-border-l').textContent = vizBorderCol;
-  document.getElementById('viz-border-r').textContent = vizBorderCol;
+  elVizBorderL.textContent = vizBorderCol;
+  elVizBorderR.textContent = vizBorderCol;
 
   // Side borders for control panel
-  const panel = document.getElementById('control-panel');
-  const numLines = Math.ceil(panel.clientHeight / lineH) + 1;
-  const borderCol = new Array(numLines).fill('║').join('\n');
-  document.getElementById('border-left').textContent = borderCol;
-  document.getElementById('border-right').textContent = borderCol;
+  const numLines = Math.ceil(elControlPanel.clientHeight / lineH) + 1;
+  if (numLines !== cachedBorderLines) {
+    cachedBorderLines = numLines;
+    cachedBorderStr = new Array(numLines).fill('║').join('\n');
+  }
+  elBorderLeft.textContent = cachedBorderStr;
+  elBorderRight.textContent = cachedBorderStr;
 
   requestAnimationFrame(render);
 }
@@ -1391,8 +1421,8 @@ function updateLUFS() {
   if (!lufsFilterL || !lufsFilterR) return;
 
   const bufLen = lufsFilterL.fftSize;
-  const dL = new Float32Array(bufLen);
-  const dR = new Float32Array(bufLen);
+  if (!lufsBufL || lufsBufL.length !== bufLen) { lufsBufL = new Float32Array(bufLen); lufsBufR = new Float32Array(bufLen); }
+  const dL = lufsBufL, dR = lufsBufR;
   lufsFilterL.getFloatTimeDomainData(dL);
   lufsFilterR.getFloatTimeDomainData(dR);
 

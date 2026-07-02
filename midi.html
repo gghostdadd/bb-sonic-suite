@@ -446,6 +446,15 @@ function passesFilter(msg) {
 }
 
 // ── RENDER ────────────────────────────────────────
+const elDisplay = document.getElementById('display');
+const elFrameMid = document.getElementById('frame-mid');
+const elFrameBot = document.getElementById('frame-bot');
+const elControlPanel = document.getElementById('control-panel');
+const elBorderLeft = document.getElementById('border-left');
+const elBorderRight = document.getElementById('border-right');
+let cachedBorderLines = 0;
+let cachedBorderStr = '';
+
 function render() {
   tick++;
   if (noteFlash > 0) noteFlash--;
@@ -544,17 +553,19 @@ function render() {
     lines.push(lpad(''));
   }
 
-  document.getElementById('display').textContent = lines.join('\n');
-  document.getElementById('frame-mid').textContent = hBar('═');
-  document.getElementById('frame-bot').textContent = '╚' + '═'.repeat(W) + '╝';
+  elDisplay.textContent = lines.join('\n');
+  elFrameMid.textContent = hBar('═');
+  elFrameBot.textContent = '╚' + '═'.repeat(W) + '╝';
 
   // Side borders
-  const panel = document.getElementById('control-panel');
   const lineH = 21.75;
-  const numLines = Math.ceil(panel.clientHeight / lineH) + 1;
-  const borderCol = new Array(numLines).fill('║').join('\n');
-  document.getElementById('border-left').textContent = borderCol;
-  document.getElementById('border-right').textContent = borderCol;
+  const numLines = Math.ceil(elControlPanel.clientHeight / lineH) + 1;
+  if (numLines !== cachedBorderLines) {
+    cachedBorderLines = numLines;
+    cachedBorderStr = new Array(numLines).fill('║').join('\n');
+  }
+  elBorderLeft.textContent = cachedBorderStr;
+  elBorderRight.textContent = cachedBorderStr;
 
   requestAnimationFrame(render);
 }
