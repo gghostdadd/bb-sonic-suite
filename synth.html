@@ -1,0 +1,1583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BB SYNTH</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0a0a0a;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: 30px 10px;
+  font-family: Menlo, Consolas, 'Courier New', monospace;
+}
+
+#crt {
+  position: relative;
+  background: #0c0a02;
+  border: 1px solid #333333;
+  border-radius: 0;
+  padding: 28px 36px;
+  max-width: 1000px;
+  width: min-content;
+  box-shadow: none;
+}
+
+#display {
+  white-space: pre;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #e0e0e0;
+  text-shadow: 0 0 8px #e0e0e055;
+  letter-spacing: 0.5px;
+}
+
+/* Control panel overlay */
+#control-panel {
+  position: absolute;
+  left: 36px;
+  right: 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.section-row {
+  display: flex;
+  gap: 0;
+  justify-content: center;
+}
+
+.section {
+  flex: 1;
+  padding: 10px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.section-label {
+  font-size: 10px;
+  color: #666;
+  letter-spacing: 2px;
+  margin-bottom: 2px;
+}
+
+.param-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: #e0e0e0;
+}
+
+.param-label {
+  width: 42px;
+  font-size: 10px;
+  color: #888;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.param-value {
+  width: 55px;
+  font-size: 10px;
+  color: #aaa;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.section-env .param-label { width: 12px; }
+.section-env .param-value { width: 42px; }
+
+.section-row {
+  overflow: hidden;
+}
+
+#control-panel {
+  overflow: hidden;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 2px;
+  background: #333;
+  outline: none;
+  flex: 1;
+  min-width: 40px;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px; height: 14px;
+  background: #e0e0e0;
+  border: 1px solid #666;
+  cursor: pointer;
+}
+
+.crt-select {
+  background: #111;
+  color: #e0e0e0;
+  border: 1px solid #444;
+  font-family: Menlo, Consolas, monospace;
+  font-size: 11px;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.btn {
+  background: #111;
+  color: #e0e0e0;
+  border: 1px solid #444;
+  font-family: Menlo, Consolas, monospace;
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover { border-color: #888; }
+.btn:active { background: #222; }
+
+/* LFO canvas */
+#lfo-canvas {
+  width: 100%;
+  height: 50px;
+  border: 1px solid #333;
+  background: #0a0a0a;
+  display: block;
+}
+
+/* Waveform canvas */
+#osc-canvas {
+  width: 100%;
+  height: 50px;
+  border: 1px solid #333;
+  background: #0a0a0a;
+  display: block;
+}
+
+/* Filter canvas */
+#filter-canvas {
+  width: 100%;
+  height: 50px;
+  border: 1px solid #333;
+  background: #0a0a0a;
+  display: block;
+}
+
+/* Envelope canvas */
+#env-canvas {
+  width: 100%;
+  height: 50px;
+  border: 1px solid #333;
+  background: #0a0a0a;
+  display: block;
+}
+
+/* Color pickers */
+.color-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  font-size: 11px;
+  color: #888;
+}
+.color-row input[type="color"] {
+  width: 28px; height: 18px;
+  border: 1px solid #444;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.divider {
+  width: 1px;
+  background: #333;
+  align-self: stretch;
+  flex-shrink: 0;
+}
+
+/* MIDI CC popup */
+.cc-popup {
+  position: fixed;
+  background: #111;
+  border: 1px solid #555;
+  padding: 10px 12px;
+  font-family: Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #e0e0e0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  min-width: 120px;
+}
+.cc-popup .cc-title {
+  font-size: 10px;
+  color: #888;
+  letter-spacing: 1px;
+}
+.cc-popup .cc-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cc-popup input[type="number"] {
+  width: 48px;
+  background: #0a0a0a;
+  border: 1px solid #444;
+  color: #e0e0e0;
+  font-family: Menlo, Consolas, monospace;
+  font-size: 11px;
+  padding: 2px 4px;
+  text-align: center;
+}
+.cc-popup .cc-btn {
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #e0e0e0;
+  font-family: Menlo, Consolas, monospace;
+  font-size: 10px;
+  padding: 3px 8px;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+}
+.cc-popup .cc-btn:hover { border-color: #888; }
+.cc-popup .cc-btn.learning {
+  border-color: #e0e0e0;
+  color: #fff;
+  animation: cc-pulse 1s infinite;
+}
+@keyframes cc-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+</style>
+</head>
+<body>
+<div id="crt">
+  <pre id="display"></pre>
+  <div id="control-panel">
+
+    <div class="section-row">
+      <!-- LFO -->
+      <div class="section">
+        <div class="section-label">LFO</div>
+        <canvas id="lfo-canvas"></canvas>
+        <div class="param-row">
+          <span class="param-label">SHAPE</span>
+          <select id="lfo-shape" class="crt-select" style="width:80px;">
+            <option value="sine">SINE</option>
+            <option value="triangle">TRI</option>
+            <option value="sawtooth">SAW</option>
+            <option value="square">SQUARE</option>
+          </select>
+        </div>
+        <div class="param-row">
+          <span class="param-label">RATE</span>
+          <input type="range" id="lfo-rate" min="1" max="200" value="20" step="1">
+          <span class="param-value" id="rate-val">2.0 Hz</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- OSCILLATOR -->
+      <div class="section">
+        <div class="section-label">OSCILLATOR</div>
+        <canvas id="osc-canvas"></canvas>
+        <div class="param-row">
+          <span class="param-label">TYPE</span>
+          <select id="osc-type" class="crt-select" style="width:110px;">
+            <option value="classic">▶ CLASSIC</option>
+            <option value="basic">▶ BASIC</option>
+            <option value="formant">▶ FORMANT</option>
+            <option value="harmonics">▶ HARMONICS</option>
+            <option value="organ">▶ ORGAN</option>
+            <option value="digital">▶ DIGITAL</option>
+          </select>
+        </div>
+        <div class="param-row">
+          <span class="param-label">WAVE</span>
+          <input type="range" id="wave-pos" min="0" max="1000" value="0" step="1">
+          <span class="param-value" id="wave-val">0%</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">OCT</span>
+          <input type="range" id="osc-octave" min="-3" max="3" value="0" step="1">
+          <span class="param-value" id="oct-val">0</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">DTUNE</span>
+          <input type="range" id="osc-detune" min="-100" max="100" value="0" step="1">
+          <span class="param-value" id="detune-val">0 ct</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">MOD</span>
+          <input type="range" id="lfo-pitch" min="0" max="100" value="0" step="1">
+          <span class="param-value" id="lpit-val">0%</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- FILTER -->
+      <div class="section">
+        <div class="section-label">FILTER</div>
+        <canvas id="filter-canvas"></canvas>
+        <div class="param-row">
+          <span class="param-label">TYPE</span>
+          <select id="filter-type" class="crt-select" style="width:90px; flex:0 0 auto;">
+            <option value="lowpass">LOWPASS</option>
+            <option value="highpass">HIGHPASS</option>
+            <option value="bandpass">BANDPASS</option>
+            <option value="notch">NOTCH</option>
+          </select>
+        </div>
+        <div class="param-row">
+          <span class="param-label">CUTOFF</span>
+          <input type="range" id="filter-cutoff" min="20" max="20000" value="8000" step="1">
+          <span class="param-value" id="cutoff-val">8.0 kHz</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">RES</span>
+          <input type="range" id="filter-res" min="0" max="30" value="1" step="0.1">
+          <span class="param-value" id="res-val">1.0</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">ENV</span>
+          <input type="range" id="filter-env" min="0" max="100" value="0" step="1">
+          <span class="param-value" id="fenv-val">0%</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">MOD</span>
+          <input type="range" id="lfo-filter" min="0" max="100" value="0" step="1">
+          <span class="param-value" id="lflt-val">0%</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- ENVELOPE -->
+      <div class="section section-env">
+        <div class="section-label">ENVELOPE</div>
+        <canvas id="env-canvas"></canvas>
+        <div class="param-row">
+          <span class="param-label">A</span>
+          <input type="range" id="env-a" min="1" max="5000" value="10" step="1">
+          <span class="param-value" id="a-val">10 ms</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">D</span>
+          <input type="range" id="env-d" min="1" max="5000" value="200" step="1">
+          <span class="param-value" id="d-val">200 ms</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">S</span>
+          <input type="range" id="env-s" min="0" max="100" value="70" step="1">
+          <span class="param-value" id="s-val">70%</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">R</span>
+          <input type="range" id="env-r" min="1" max="5000" value="300" step="1">
+          <span class="param-value" id="r-val">300 ms</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">MOD</span>
+          <input type="range" id="lfo-amp" min="0" max="100" value="0" step="1">
+          <span class="param-value" id="lamp-val">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- MASTER -->
+    <div style="height:1px; background:#333; margin:0 18px;"></div>
+    <div class="section-row">
+      <div class="section">
+        <div class="param-row">
+          <span class="param-label">VOL</span>
+          <input type="range" id="master-vol" min="0" max="100" value="75" step="1">
+          <span class="param-value" id="vol-val">75%</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section">
+        <div class="param-row">
+          <span class="param-label">VOICES</span>
+          <select id="voice-count" class="crt-select" style="width:50px;">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="4">4</option>
+            <option value="8" selected>8</option>
+            <option value="12">12</option>
+            <option value="16">16</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section">
+        <div class="param-row">
+          <span class="param-label">INPUT</span>
+          <select id="midi-select" class="crt-select" style="flex:1; min-width:0;">
+            <option value="">— NONE —</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section section-env">
+        <div class="param-row" style="gap:8px;">
+          <span class="param-label">CH</span>
+          <select id="midi-ch" class="crt-select" style="width:46px;">
+            <option value="0">ALL</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+            <option value="9">9</option>
+            <option value="10">10</option>
+            <option value="11">11</option>
+            <option value="12">12</option>
+            <option value="13">13</option>
+            <option value="14">14</option>
+            <option value="15">15</option>
+            <option value="16">16</option>
+          </select>
+          <button class="btn" onclick="detectMidi()" style="padding:3px 8px; font-size:10px;">DETECT</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- COLORS -->
+    <div class="color-row">
+      <span>BG:</span><input type="color" id="color-bg" value="#0a0a0a" onchange="applyColors()">
+      <span>TEXT:</span><input type="color" id="color-text" value="#e0e0e0" onchange="applyColors()">
+    </div>
+
+  </div>
+</div>
+
+<script>
+const W = 90;
+
+// Audio state
+let audioCtx = null;
+let masterGain = null;
+let analyserNode = null;
+let voices = [];
+let maxVoices = 8;
+let voiceCounter = 0;
+
+// Display state
+let tick = 0;
+let errorMsg = '';
+let lastNoteName = '--';
+let lastVel = '---';
+let lastCh = '--';
+let midiConnected = false;
+let selectedInputId = '';
+
+// MIDI CC mapping state
+const ccToParam = {};
+const paramToCC = {};
+let ccLearnTarget = null;
+let ccPopupEl = null;
+let vuBuf = null;
+
+// Cached DOM refs
+const elDisplay = document.getElementById('display');
+const elLfoCanvas = document.getElementById('lfo-canvas');
+const elOscCanvas = document.getElementById('osc-canvas');
+const elFilterCanvas = document.getElementById('filter-canvas');
+const elEnvCanvas = document.getElementById('env-canvas');
+const lfoCanvasCtx = elLfoCanvas.getContext('2d');
+const oscCtx = elOscCanvas.getContext('2d');
+const filterCanvasCtx = elFilterCanvas.getContext('2d');
+const envCtx = elEnvCanvas.getContext('2d');
+let vizFilter = null;
+
+// ── WAVETABLE PRESETS ────────────────────────────
+const N_PARTIALS = 64;
+
+function makePartials(fn) {
+  const real = new Float32Array(N_PARTIALS);
+  const imag = new Float32Array(N_PARTIALS);
+  for (let n = 1; n < N_PARTIALS; n++) {
+    const v = fn(n);
+    if (typeof v === 'number') { imag[n] = v; }
+    else { real[n] = v.cos || 0; imag[n] = v.sin || 0; }
+  }
+  return { real, imag };
+}
+
+// Each bank is an ordered array of wavetables to sweep through
+const BANKS = {
+  classic: [
+    { name: 'SINE', partials: makePartials(n => n === 1 ? 1 : 0) },
+    { name: 'TRI', partials: makePartials(n => (n % 2 === 0) ? 0 : ((n % 4 === 1 ? 1 : -1) / (n * n))) },
+    { name: 'SAW', partials: makePartials(n => (n % 2 === 0 ? -1 : 1) / n) },
+    { name: 'SQUARE', partials: makePartials(n => (n % 2 === 0) ? 0 : 1 / n) },
+  ],
+  basic: [
+    { name: 'SOFT SAW', partials: makePartials(n => 1 / (n * n * 0.5 + n * 0.5)) },
+    { name: 'PULSE 25', partials: makePartials(n => (2 / (n * Math.PI)) * Math.sin(n * Math.PI * 0.25)) },
+    { name: 'PULSE 10', partials: makePartials(n => (2 / (n * Math.PI)) * Math.sin(n * Math.PI * 0.10)) },
+    { name: 'SAW-TRI', partials: makePartials(n => {
+      const saw = (n % 2 === 0 ? -1 : 1) / n;
+      const tri = (n % 2 === 0) ? 0 : ((n % 4 === 1 ? 1 : -1) / (n * n));
+      return saw * 0.5 + tri * 0.5;
+    })},
+    { name: 'SUPER SAW', partials: makePartials(n => {
+      if (n > 32) return 0;
+      return 1 / n + 0.3 / n * Math.sin(n * 0.7) + 0.2 / n * Math.cos(n * 1.3);
+    })},
+  ],
+  formant: [
+    { name: 'A', partials: makePartials(n => { const f=n*130.81; return (Math.exp(-0.5*((f-730)/90)**2)+0.5*Math.exp(-0.5*((f-1090)/110)**2)+0.3*Math.exp(-0.5*((f-2440)/120)**2)+0.02)/n; })},
+    { name: 'E', partials: makePartials(n => { const f=n*130.81; return (Math.exp(-0.5*((f-530)/60)**2)+0.5*Math.exp(-0.5*((f-1840)/110)**2)+0.3*Math.exp(-0.5*((f-2480)/100)**2)+0.02)/n; })},
+    { name: 'I', partials: makePartials(n => { const f=n*130.81; return (Math.exp(-0.5*((f-270)/60)**2)+0.5*Math.exp(-0.5*((f-2290)/110)**2)+0.3*Math.exp(-0.5*((f-3010)/100)**2)+0.02)/n; })},
+    { name: 'O', partials: makePartials(n => { const f=n*130.81; return (Math.exp(-0.5*((f-570)/70)**2)+0.5*Math.exp(-0.5*((f-840)/80)**2)+0.3*Math.exp(-0.5*((f-2410)/120)**2)+0.02)/n; })},
+    { name: 'U', partials: makePartials(n => { const f=n*130.81; return (Math.exp(-0.5*((f-440)/70)**2)+0.5*Math.exp(-0.5*((f-1020)/80)**2)+0.3*Math.exp(-0.5*((f-2240)/100)**2)+0.02)/n; })},
+  ],
+  harmonics: [
+    { name: 'DARK', partials: makePartials(n => 1 / (n * n)) },
+    { name: 'ODD', partials: makePartials(n => (n % 2 === 0) ? 0 : 1 / n) },
+    { name: 'EVEN', partials: makePartials(n => (n % 2 === 1) ? 0 : 1 / n) },
+    { name: 'BRIGHT', partials: makePartials(n => 1 / Math.sqrt(n)) },
+    { name: 'GLASS', partials: makePartials(n => (n > 24) ? 0 : (n > 8 ? 0.8 / Math.sqrt(n) : 0.1 / n)) },
+  ],
+  organ: [
+    { name: 'FLUTE', partials: makePartials(n => { const d={1:1.0,2:0.2,3:0.05}; return d[n]||0; })},
+    { name: 'PIPE I', partials: makePartials(n => { const d={1:0.8,2:0.6,3:0.5,4:0.3,6:0.2,8:0.4}; return d[n]||0; })},
+    { name: 'PIPE II', partials: makePartials(n => { const d={1:1.0,2:0.8,3:0.7,4:0.6,5:0.2,6:0.5,8:0.6,10:0.1,12:0.2}; return d[n]||0; })},
+    { name: 'FULL', partials: makePartials(n => { const d={1:0.4,2:1.0,3:0.3,4:0.8,6:0.6,8:0.7,12:0.3,16:0.2}; return d[n]||0; })},
+    { name: 'REED', partials: makePartials(n => (n > 16) ? 0 : (n % 2 === 1 ? 0.9 : 0.4) / Math.sqrt(n)) },
+  ],
+  digital: [
+    { name: 'ICE', partials: makePartials(n => (n > 24) ? 0 : (n === 1 ? 0.3 : (n > 8 ? 0.6 / n : 0.05 / n))) },
+    { name: 'BELL', partials: makePartials(n => (n > 20) ? 0 : (n===1||n===4||n===7||n===11||n===15) ? 1/Math.sqrt(n) : 0.05/n) },
+    { name: 'METAL', partials: makePartials(n => (n > 32) ? 0 : (n%3===0||n%7===0) ? 0.8/Math.sqrt(n) : 0.1/n) },
+    { name: 'BUZZ', partials: makePartials(n => (n > 40) ? 0 : 0.7 / Math.sqrt(n)) },
+    { name: 'NOISE', partials: makePartials(n => (n > 48) ? 0 : (Math.sin(n*n*1.7)*0.5+0.5) / Math.sqrt(n)) },
+  ],
+};
+
+let lfoNode = null;
+let lfoPitchGain = null;
+let lfoFilterGain = null;
+let lfoAmpGain = null;
+let activePeriodicWave = null;
+let currentBankName = 'classic';
+let currentWavePos = 0;
+
+function lerpPartials(a, b, t) {
+  const real = new Float32Array(N_PARTIALS);
+  const imag = new Float32Array(N_PARTIALS);
+  for (let n = 0; n < N_PARTIALS; n++) {
+    real[n] = a.real[n] * (1 - t) + b.real[n] * t;
+    imag[n] = a.imag[n] * (1 - t) + b.imag[n] * t;
+  }
+  return { real, imag };
+}
+
+function getInterpolatedPartials(bankName, pos) {
+  const bank = BANKS[bankName];
+  if (!bank) return null;
+  const fIdx = pos * (bank.length - 1);
+  const lo = Math.floor(fIdx);
+  const hi = Math.min(lo + 1, bank.length - 1);
+  const t = fIdx - lo;
+  if (t < 0.001) return bank[lo].partials;
+  return lerpPartials(bank[lo].partials, bank[hi].partials, t);
+}
+
+function getWaveframeName(bankName, pos) {
+  const bank = BANKS[bankName];
+  if (!bank) return '';
+  const fIdx = pos * (bank.length - 1);
+  const lo = Math.floor(fIdx);
+  const hi = Math.min(lo + 1, bank.length - 1);
+  const t = fIdx - lo;
+  if (t < 0.3) return bank[lo].name;
+  if (t > 0.7) return bank[hi].name;
+  return bank[lo].name + '~' + bank[hi].name;
+}
+
+function applyWavePosition() {
+  if (!audioCtx || voices.length === 0) return;
+  const wt = getInterpolatedPartials(currentBankName, currentWavePos);
+  if (wt) {
+    activePeriodicWave = audioCtx.createPeriodicWave(wt.real, wt.imag, { disableNormalization: false });
+    for (const v of voices) v.osc.setPeriodicWave(activePeriodicWave);
+  }
+}
+
+function applyOscType(bankName) {
+  currentBankName = bankName;
+  applyWavePosition();
+}
+
+function samplePartials(partials, phase) {
+  let y = 0;
+  for (let n = 1; n < N_PARTIALS; n++) {
+    y += partials.imag[n] * Math.sin(n * phase * Math.PI * 2);
+    y += partials.real[n] * Math.cos(n * phase * Math.PI * 2);
+  }
+  return y;
+}
+
+function getWavetableSample(bankName, pos, phase) {
+  const wt = getInterpolatedPartials(bankName, pos);
+  if (!wt) return 0;
+  return samplePartials(wt, phase);
+}
+
+// ── AUDIO SETUP ──────────────────────────────────
+function ensureAudio() {
+  if (audioCtx) return;
+  audioCtx = new AudioContext();
+
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = parseInt(document.getElementById('master-vol').value) / 100;
+
+  analyserNode = audioCtx.createAnalyser();
+  analyserNode.fftSize = 2048;
+
+  masterGain.connect(analyserNode);
+  analyserNode.connect(audioCtx.destination);
+
+  lfoNode = audioCtx.createOscillator();
+  lfoNode.type = document.getElementById('lfo-shape').value;
+  lfoNode.frequency.value = parseInt(document.getElementById('lfo-rate').value) / 10;
+
+  lfoPitchGain = audioCtx.createGain();
+  lfoPitchGain.gain.value = parseInt(document.getElementById('lfo-pitch').value) / 100 * 1200;
+
+  lfoFilterGain = audioCtx.createGain();
+  lfoFilterGain.gain.value = parseInt(document.getElementById('lfo-filter').value) / 100 * 8000;
+
+  lfoAmpGain = audioCtx.createGain();
+  lfoAmpGain.gain.value = parseInt(document.getElementById('lfo-amp').value) / 100 * 0.5;
+
+  lfoNode.connect(lfoPitchGain);
+  lfoNode.connect(lfoFilterGain);
+  lfoNode.connect(lfoAmpGain);
+  lfoAmpGain.connect(masterGain.gain);
+  lfoNode.start();
+  lfoStartTime = audioCtx.currentTime;
+
+  currentBankName = document.getElementById('osc-type').value;
+  currentWavePos = parseInt(document.getElementById('wave-pos').value) / 1000;
+}
+
+function createVoice() {
+  const osc = audioCtx.createOscillator();
+  osc.frequency.value = 440;
+
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = document.getElementById('filter-type').value;
+  filter.frequency.value = parseFloat(document.getElementById('filter-cutoff').value);
+  filter.Q.value = parseFloat(document.getElementById('filter-res').value);
+
+  const env = audioCtx.createGain();
+  env.gain.value = 0;
+
+  osc.connect(filter);
+  filter.connect(env);
+  env.connect(masterGain);
+
+  if (lfoPitchGain) lfoPitchGain.connect(osc.detune);
+  if (lfoFilterGain) lfoFilterGain.connect(filter.frequency);
+
+  const wt = getInterpolatedPartials(currentBankName, currentWavePos);
+  if (wt) {
+    const pw = audioCtx.createPeriodicWave(wt.real, wt.imag, { disableNormalization: false });
+    osc.setPeriodicWave(pw);
+  }
+
+  osc.start();
+
+  return { osc, filter, env, note: -1, active: false, startTime: 0, releaseTime: 0, order: 0 };
+}
+
+function destroyVoice(v) {
+  v.osc.stop();
+  v.osc.disconnect();
+  v.filter.disconnect();
+  v.env.disconnect();
+}
+
+function rebuildVoices() {
+  voices.forEach(destroyVoice);
+  voices = [];
+  if (!audioCtx) return;
+  for (let i = 0; i < maxVoices; i++) {
+    voices.push(createVoice());
+  }
+}
+
+// ── MIDI → FREQUENCY ─────────────────────────────
+function midiToFreq(note) {
+  const oct = parseInt(document.getElementById('osc-octave').value);
+  const detune = parseInt(document.getElementById('osc-detune').value);
+  return 440 * Math.pow(2, (note - 69 + oct * 12) / 12 + detune / 1200);
+}
+
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+function noteName(midi) {
+  return NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
+}
+
+// ── VOICE ALLOCATION ────────────────────────────
+function allocateVoice(midi) {
+  // Reuse voice already playing this note
+  let v = voices.find(v => v.note === midi && v.active);
+  if (v) return v;
+
+  // Find a free (inactive) voice
+  v = voices.find(v => !v.active);
+  if (v) return v;
+
+  // Steal oldest active voice
+  let oldest = voices[0];
+  for (let i = 1; i < voices.length; i++) {
+    if (voices[i].order < oldest.order) oldest = voices[i];
+  }
+  return oldest;
+}
+
+// ── ENVELOPE ─────────────────────────────────────
+function triggerAttack(voice, velocity) {
+  const now = audioCtx.currentTime;
+  const a = parseInt(document.getElementById('env-a').value) / 1000;
+  const d = parseInt(document.getElementById('env-d').value) / 1000;
+  const s = parseInt(document.getElementById('env-s').value) / 100;
+  const vel = velocity / 127;
+
+  const peak = vel * 0.15;
+
+  voice.env.gain.cancelScheduledValues(now);
+  voice.env.gain.setValueAtTime(voice.env.gain.value, now);
+  voice.env.gain.linearRampToValueAtTime(peak, now + a);
+  voice.env.gain.linearRampToValueAtTime(s * peak, now + a + d);
+
+  const fenvAmt = parseInt(document.getElementById('filter-env').value) / 100;
+  if (fenvAmt > 0) {
+    const baseCutoff = parseFloat(document.getElementById('filter-cutoff').value);
+    const peak = Math.min(20000, baseCutoff + fenvAmt * (20000 - baseCutoff));
+    voice.filter.frequency.cancelScheduledValues(now);
+    voice.filter.frequency.setValueAtTime(voice.filter.frequency.value, now);
+    voice.filter.frequency.linearRampToValueAtTime(peak, now + a);
+    voice.filter.frequency.linearRampToValueAtTime(baseCutoff, now + a + d);
+  }
+
+  voice.active = true;
+  voice.startTime = now;
+  voice.releaseTime = 0;
+  voice.order = ++voiceCounter;
+}
+
+function triggerRelease(voice) {
+  if (!voice.active) return;
+  const now = audioCtx.currentTime;
+  const r = parseInt(document.getElementById('env-r').value) / 1000;
+
+  voice.env.gain.cancelScheduledValues(now);
+  voice.env.gain.setValueAtTime(voice.env.gain.value, now);
+  voice.env.gain.linearRampToValueAtTime(0, now + r);
+
+  const fenvAmt = parseInt(document.getElementById('filter-env').value) / 100;
+  if (fenvAmt > 0) {
+    const baseCutoff = parseFloat(document.getElementById('filter-cutoff').value);
+    voice.filter.frequency.cancelScheduledValues(now);
+    voice.filter.frequency.setValueAtTime(voice.filter.frequency.value, now);
+    voice.filter.frequency.linearRampToValueAtTime(baseCutoff, now + r);
+  }
+
+  voice.active = false;
+  voice.releaseTime = now;
+  voice.note = -1;
+}
+
+// ── VOICE SCALING ────────────────────────────────
+function updateMasterLevel() {
+  if (!masterGain) return;
+  const userVol = parseInt(document.getElementById('master-vol').value) / 100;
+  masterGain.gain.setTargetAtTime(userVol, audioCtx.currentTime, 0.015);
+}
+
+// ── NOTE ON / OFF ────────────────────────────────
+function noteOn(midi, velocity, channel) {
+  ensureAudio();
+  if (voices.length === 0) rebuildVoices();
+
+  const voice = allocateVoice(midi);
+  const freq = midiToFreq(midi);
+  voice.osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  voice.note = midi;
+
+  lastNoteName = noteName(midi);
+  lastVel = String(velocity).padStart(3);
+  lastCh = String(channel).padStart(2);
+
+  triggerAttack(voice, velocity);
+  updateMasterLevel();
+}
+
+function noteOff(midi) {
+  for (const v of voices) {
+    if (v.note === midi && v.active) {
+      triggerRelease(v);
+    }
+  }
+  updateMasterLevel();
+}
+
+// ── MIDI CC MAPPING ──────────────────────────────
+function assignCC(cc, paramId) {
+  if (paramToCC[paramId] !== undefined) {
+    delete ccToParam[paramToCC[paramId]];
+  }
+  if (ccToParam[cc]) {
+    delete paramToCC[ccToParam[cc]];
+  }
+  ccToParam[cc] = paramId;
+  paramToCC[paramId] = cc;
+}
+
+function clearCC(paramId) {
+  const cc = paramToCC[paramId];
+  if (cc !== undefined) {
+    delete ccToParam[cc];
+    delete paramToCC[paramId];
+  }
+}
+
+function applyCCValue(paramId, ccVal) {
+  const el = document.getElementById(paramId);
+  if (!el) return;
+  if (el.tagName === 'SELECT') {
+    const idx = Math.round(ccVal / 127 * (el.options.length - 1));
+    el.selectedIndex = idx;
+    el.dispatchEvent(new Event('change'));
+  } else {
+    const min = parseFloat(el.min);
+    const max = parseFloat(el.max);
+    el.value = min + (ccVal / 127) * (max - min);
+    el.dispatchEvent(new Event('input'));
+  }
+}
+
+function showCCPopup(paramId, x, y) {
+  closeCCPopup();
+  const el = document.createElement('div');
+  el.className = 'cc-popup';
+  const label = paramId.replace(/-/g, ' ').toUpperCase();
+  const currentCC = paramToCC[paramId];
+
+  el.innerHTML =
+    '<div class="cc-title">' + label + (currentCC !== undefined ? ' — CC ' + currentCC : '') + '</div>' +
+    '<div class="cc-row">' +
+      '<span style="color:#888;">CC#</span>' +
+      '<input type="number" min="0" max="127" value="' + (currentCC !== undefined ? currentCC : '') + '" id="cc-num-input" placeholder="0-127">' +
+    '</div>' +
+    '<button class="cc-btn" id="cc-learn-btn" style="width:100%;">LEARN</button>' +
+    '<button class="cc-btn" id="cc-clear-btn" style="width:100%;">CLEAR</button>';
+
+  el.style.left = Math.min(x, window.innerWidth - 200) + 'px';
+  el.style.top = Math.min(y, window.innerHeight - 100) + 'px';
+  el.dataset.paramId = paramId;
+  document.body.appendChild(el);
+  ccPopupEl = el;
+
+  const numInput = el.querySelector('#cc-num-input');
+  numInput.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      const v = parseInt(numInput.value);
+      if (v >= 0 && v <= 127) { assignCC(v, paramId); closeCCPopup(); }
+    }
+  });
+  numInput.focus();
+
+  el.querySelector('#cc-learn-btn').addEventListener('click', (e) => {
+    ccLearnTarget = paramId;
+    e.target.classList.add('learning');
+    e.target.textContent = 'WAITING...';
+  });
+
+  el.querySelector('#cc-clear-btn').addEventListener('click', () => {
+    clearCC(paramId);
+    closeCCPopup(false);
+  });
+
+  setTimeout(() => {
+    document.addEventListener('pointerdown', closeCCPopupOutside);
+  }, 0);
+}
+
+function closeCCPopup(autoAssign) {
+  if (ccPopupEl) {
+    if (autoAssign !== false) {
+      const input = ccPopupEl.querySelector('#cc-num-input');
+      const paramId = ccPopupEl.dataset.paramId;
+      if (input && paramId) {
+        const v = parseInt(input.value);
+        if (v >= 0 && v <= 127) assignCC(v, paramId);
+      }
+    }
+    ccPopupEl.remove();
+    ccPopupEl = null;
+  }
+  ccLearnTarget = null;
+  document.removeEventListener('pointerdown', closeCCPopupOutside);
+}
+
+function closeCCPopupOutside(e) {
+  if (!ccPopupEl) return;
+  const rect = ccPopupEl.getBoundingClientRect();
+  const inside = e.clientX >= rect.left && e.clientX <= rect.right &&
+                 e.clientY >= rect.top && e.clientY <= rect.bottom;
+  if (!inside) closeCCPopup();
+}
+
+const CC_PARAMS = [
+  'lfo-shape', 'lfo-rate', 'lfo-pitch', 'lfo-filter', 'lfo-amp',
+  'osc-type', 'wave-pos', 'osc-octave', 'osc-detune',
+  'filter-type', 'filter-cutoff', 'filter-res', 'filter-env',
+  'env-a', 'env-d', 'env-s', 'env-r',
+  'master-vol',
+];
+
+CC_PARAMS.forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    showCCPopup(id, e.clientX, e.clientY);
+  });
+});
+
+// ── MIDI HANDLING ────────────────────────────────
+function onMidiMessage(e) {
+  const [status, data1, data2] = e.data;
+  const cmd = status & 0xF0;
+  const ch = (status & 0x0F) + 1;
+  const filterCh = parseInt(document.getElementById('midi-ch').value);
+  if (filterCh > 0 && ch !== filterCh) return;
+
+  if (cmd === 0x90 && data2 > 0) {
+    noteOn(data1, data2, ch);
+  } else if (cmd === 0x80 || (cmd === 0x90 && data2 === 0)) {
+    noteOff(data1);
+  } else if (cmd === 0xB0) {
+    if (ccLearnTarget) {
+      assignCC(data1, ccLearnTarget);
+      closeCCPopup(false);
+    }
+    if (ccToParam[data1]) {
+      applyCCValue(ccToParam[data1], data2);
+    }
+  }
+}
+
+let midiAccess = null;
+async function detectMidi() {
+  try {
+    midiAccess = await navigator.requestMIDIAccess();
+    midiConnected = true;
+    errorMsg = '';
+    populateDevices();
+    midiAccess.onstatechange = populateDevices;
+  } catch (err) {
+    errorMsg = '?ERR: MIDI ACCESS DENIED';
+    midiConnected = false;
+  }
+}
+
+function populateDevices() {
+  const sel = document.getElementById('midi-select');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— NONE —</option>';
+  if (!midiAccess) return;
+  for (const input of midiAccess.inputs.values()) {
+    const opt = document.createElement('option');
+    opt.value = input.id;
+    opt.textContent = input.name;
+    sel.appendChild(opt);
+  }
+  if (prev && sel.querySelector(`option[value="${prev}"]`)) {
+    sel.value = prev;
+  } else if (sel.options.length > 1) {
+    sel.value = sel.options[1].value;
+  }
+  connectInput();
+}
+
+function connectInput() {
+  if (!midiAccess) return;
+  for (const input of midiAccess.inputs.values()) {
+    input.onmidimessage = null;
+  }
+  selectedInputId = document.getElementById('midi-select').value;
+  if (!selectedInputId) return;
+  const input = midiAccess.inputs.get(selectedInputId);
+  if (input) input.onmidimessage = onMidiMessage;
+}
+
+document.getElementById('midi-select').addEventListener('change', connectInput);
+
+// ── PARAMETER UPDATES ────────────────────────────
+document.getElementById('osc-type').addEventListener('change', () => {
+  applyOscType(document.getElementById('osc-type').value);
+});
+
+document.getElementById('wave-pos').addEventListener('input', () => {
+  currentWavePos = parseInt(document.getElementById('wave-pos').value) / 1000;
+  document.getElementById('wave-val').textContent = Math.round(currentWavePos * 100) + '%';
+  applyWavePosition();
+});
+
+document.getElementById('filter-type').addEventListener('change', () => {
+  const t = document.getElementById('filter-type').value;
+  for (const v of voices) v.filter.type = t;
+});
+
+document.getElementById('filter-cutoff').addEventListener('input', () => {
+  const val = parseFloat(document.getElementById('filter-cutoff').value);
+  document.getElementById('cutoff-val').textContent = val >= 1000 ? (val / 1000).toFixed(1) + ' kHz' : Math.round(val) + ' Hz';
+  if (audioCtx) {
+    const now = audioCtx.currentTime;
+    for (const v of voices) {
+      v.filter.frequency.cancelScheduledValues(now);
+      v.filter.frequency.setValueAtTime(val, now);
+    }
+  }
+});
+
+document.getElementById('filter-res').addEventListener('input', () => {
+  const val = parseFloat(document.getElementById('filter-res').value);
+  document.getElementById('res-val').textContent = val.toFixed(1);
+  for (const v of voices) v.filter.Q.value = val;
+});
+
+document.getElementById('filter-env').addEventListener('input', () => {
+  document.getElementById('fenv-val').textContent = document.getElementById('filter-env').value + '%';
+});
+
+document.getElementById('osc-octave').addEventListener('input', () => {
+  document.getElementById('oct-val').textContent = document.getElementById('osc-octave').value;
+  if (audioCtx) {
+    const now = audioCtx.currentTime;
+    for (const v of voices) {
+      if (v.note >= 0) v.osc.frequency.setValueAtTime(midiToFreq(v.note), now);
+    }
+  }
+});
+
+document.getElementById('osc-detune').addEventListener('input', () => {
+  const val = parseInt(document.getElementById('osc-detune').value);
+  document.getElementById('detune-val').textContent = val + ' ct';
+  if (audioCtx) {
+    const now = audioCtx.currentTime;
+    for (const v of voices) {
+      if (v.note >= 0) v.osc.frequency.setValueAtTime(midiToFreq(v.note), now);
+    }
+  }
+});
+
+document.getElementById('voice-count').addEventListener('change', () => {
+  maxVoices = parseInt(document.getElementById('voice-count').value);
+  if (audioCtx) rebuildVoices();
+});
+
+// ── LFO PARAMETER UPDATES ──────────────────────
+document.getElementById('lfo-shape').addEventListener('change', () => {
+  if (lfoNode) lfoNode.type = document.getElementById('lfo-shape').value;
+});
+
+document.getElementById('lfo-rate').addEventListener('input', () => {
+  const val = parseInt(document.getElementById('lfo-rate').value) / 10;
+  document.getElementById('rate-val').textContent = val.toFixed(1) + ' Hz';
+  if (lfoNode) lfoNode.frequency.value = val;
+});
+
+document.getElementById('lfo-pitch').addEventListener('input', () => {
+  const val = parseInt(document.getElementById('lfo-pitch').value);
+  document.getElementById('lpit-val').textContent = val + '%';
+  if (lfoPitchGain) lfoPitchGain.gain.value = val / 100 * 1200;
+});
+
+document.getElementById('lfo-filter').addEventListener('input', () => {
+  const val = parseInt(document.getElementById('lfo-filter').value);
+  document.getElementById('lflt-val').textContent = val + '%';
+  if (lfoFilterGain) lfoFilterGain.gain.value = val / 100 * 8000;
+});
+
+document.getElementById('lfo-amp').addEventListener('input', () => {
+  const val = parseInt(document.getElementById('lfo-amp').value);
+  document.getElementById('lamp-val').textContent = val + '%';
+  if (lfoAmpGain) lfoAmpGain.gain.value = val / 100 * 0.5;
+});
+
+
+['env-a', 'env-d', 'env-s', 'env-r'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    const v = parseInt(document.getElementById(id).value);
+    const el = document.getElementById(id.replace('env-', '') + '-val');
+    if (id === 'env-s') el.textContent = v + '%';
+    else el.textContent = v >= 1000 ? (v / 1000).toFixed(1) + ' s' : v + ' ms';
+    drawEnvCurve();
+  });
+});
+
+document.getElementById('master-vol').addEventListener('input', () => {
+  const v = parseInt(document.getElementById('master-vol').value);
+  document.getElementById('vol-val').textContent = v + '%';
+  updateMasterLevel();
+});
+
+// ── LFO DISPLAY ─────────────────────────────────
+function lfoSample(shape, phase) {
+  const p = ((phase % 1) + 1) % 1;
+  switch (shape) {
+    case 'sine': return Math.sin(2 * Math.PI * p);
+    case 'triangle': return 4 * Math.abs(p - 0.5) - 1;
+    case 'sawtooth': return 2 * p - 1;
+    case 'square': return p < 0.5 ? 1 : -1;
+    default: return 0;
+  }
+}
+
+let lfoStartTime = 0;
+function drawLfoCurve() {
+  const canvas = elLfoCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  lfoCanvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  lfoCanvasCtx.fillStyle = '#0a0a0a';
+  lfoCanvasCtx.fillRect(0, 0, w, h);
+
+  const shape = document.getElementById('lfo-shape').value;
+  const rate = parseInt(document.getElementById('lfo-rate').value) / 10;
+  const cycles = 2;
+  const pad = 3;
+
+  lfoCanvasCtx.strokeStyle = '#333';
+  lfoCanvasCtx.lineWidth = 1;
+  lfoCanvasCtx.beginPath();
+  lfoCanvasCtx.moveTo(0, h / 2 + 0.5);
+  lfoCanvasCtx.lineTo(w, h / 2 + 0.5);
+  lfoCanvasCtx.stroke();
+
+  lfoCanvasCtx.strokeStyle = '#555';
+  lfoCanvasCtx.lineWidth = 1.5;
+  lfoCanvasCtx.beginPath();
+  for (let px = 0; px < w; px++) {
+    const phase = (px / w) * cycles;
+    const y = pad + (1 - lfoSample(shape, phase)) * (h - pad * 2) / 2;
+    if (px === 0) lfoCanvasCtx.moveTo(px, y);
+    else lfoCanvasCtx.lineTo(px, y);
+  }
+  lfoCanvasCtx.stroke();
+
+  const elapsed = audioCtx ? audioCtx.currentTime - lfoStartTime : performance.now() / 1000;
+  const currentPhase = (elapsed * rate) % cycles;
+  const cx = (currentPhase / cycles) * w;
+  const cy = pad + (1 - lfoSample(shape, currentPhase)) * (h - pad * 2) / 2;
+
+  lfoCanvasCtx.fillStyle = '#ffffff';
+  lfoCanvasCtx.beginPath();
+  lfoCanvasCtx.arc(cx, cy, 3, 0, Math.PI * 2);
+  lfoCanvasCtx.fill();
+}
+
+// ── WAVEFORM DISPLAY ─────────────────────────────
+function drawOscWaveform() {
+  const canvas = elOscCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  oscCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  oscCtx.fillStyle = '#0a0a0a';
+  oscCtx.fillRect(0, 0, w, h);
+
+  // Draw live waveform if playing, otherwise static waveform shape
+  const anyActive = voices.some(v => v.active);
+  if (analyserNode && anyActive) {
+    const bufLen = analyserNode.fftSize;
+    if (!vuBuf || vuBuf.length !== bufLen) vuBuf = new Float32Array(bufLen);
+    analyserNode.getFloatTimeDomainData(vuBuf);
+
+    oscCtx.strokeStyle = '#e0e0e0';
+    oscCtx.lineWidth = 1;
+    oscCtx.beginPath();
+    const step = bufLen / w;
+    for (let px = 0; px < w; px++) {
+      const i = Math.floor(px * step);
+      const y = (1 - vuBuf[i]) * h / 2;
+      if (px === 0) oscCtx.moveTo(px, y);
+      else oscCtx.lineTo(px, y);
+    }
+    oscCtx.stroke();
+  } else {
+    // Static waveform preview
+    oscCtx.strokeStyle = '#555';
+    oscCtx.lineWidth = 1;
+    oscCtx.beginPath();
+    let yMax = 0;
+    const samples = new Float32Array(w);
+    for (let px = 0; px < w; px++) {
+      const t = (px / w) * 2;
+      samples[px] = getWavetableSample(currentBankName, currentWavePos, t);
+      if (Math.abs(samples[px]) > yMax) yMax = Math.abs(samples[px]);
+    }
+    if (yMax < 0.001) yMax = 1;
+    for (let px = 0; px < w; px++) {
+      const py = (1 - samples[px] / yMax) * h / 2;
+      if (px === 0) oscCtx.moveTo(px, py);
+      else oscCtx.lineTo(px, py);
+    }
+    oscCtx.stroke();
+  }
+
+  // Center line
+  oscCtx.strokeStyle = '#222';
+  oscCtx.lineWidth = 1;
+  oscCtx.beginPath();
+  oscCtx.moveTo(0, h / 2 + 0.5);
+  oscCtx.lineTo(w, h / 2 + 0.5);
+  oscCtx.stroke();
+}
+
+// ── ENVELOPE CURVE DISPLAY ───────────────────────
+function drawEnvCurve() {
+  const canvas = elEnvCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  envCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  envCtx.fillStyle = '#0a0a0a';
+  envCtx.fillRect(0, 0, w, h);
+
+  const a = parseInt(document.getElementById('env-a').value);
+  const d = parseInt(document.getElementById('env-d').value);
+  const s = parseInt(document.getElementById('env-s').value) / 100;
+  const r = parseInt(document.getElementById('env-r').value);
+
+  const totalMs = a + d + Math.max(200, (a + d) * 0.3) + r;
+  const pad = 4;
+  const drawW = w - pad * 2;
+  const drawH = h - pad * 2;
+
+  function msToX(ms) { return pad + (ms / totalMs) * drawW; }
+  function lvlToY(lvl) { return pad + (1 - lvl) * drawH; }
+
+  const sustainHold = Math.max(200, (a + d) * 0.3);
+
+  const anyVoiceActive = voices.some(v => v.active);
+  envCtx.strokeStyle = anyVoiceActive ? '#e0e0e0' : '#555';
+  envCtx.lineWidth = 1.5;
+  envCtx.beginPath();
+  envCtx.moveTo(msToX(0), lvlToY(0));
+  envCtx.lineTo(msToX(a), lvlToY(1));
+  envCtx.lineTo(msToX(a + d), lvlToY(s));
+  envCtx.lineTo(msToX(a + d + sustainHold), lvlToY(s));
+  envCtx.lineTo(msToX(a + d + sustainHold + r), lvlToY(0));
+  envCtx.stroke();
+
+  // Stage labels
+  envCtx.fillStyle = '#444';
+  envCtx.font = '8px Menlo, Consolas, monospace';
+  envCtx.textAlign = 'center';
+  envCtx.fillText('A', msToX(a / 2), h - 1);
+  envCtx.fillText('D', msToX(a + d / 2), h - 1);
+  envCtx.fillText('S', msToX(a + d + sustainHold / 2), h - 1);
+  envCtx.fillText('R', msToX(a + d + sustainHold + r / 2), h - 1);
+
+  // Playback position indicator — show most recent active voice
+  const newestActive = voices.filter(v => v.active).sort((a, b) => b.order - a.order)[0];
+  if (newestActive && audioCtx) {
+    const elapsed = (audioCtx.currentTime - newestActive.startTime) * 1000;
+    const posMs = Math.min(elapsed, a + d + sustainHold);
+    const cx = msToX(posMs);
+    envCtx.fillStyle = '#ffffff';
+    envCtx.beginPath();
+    envCtx.arc(cx, lvlToY(posMs <= a ? posMs / a : posMs <= a + d ? 1 - (1 - s) * ((posMs - a) / d) : s), 3, 0, Math.PI * 2);
+    envCtx.fill();
+  }
+}
+
+// ── FILTER CURVE DISPLAY ────────────────────────
+function drawFilterCurve() {
+  const canvas = elFilterCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  filterCanvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  filterCanvasCtx.fillStyle = '#0a0a0a';
+  filterCanvasCtx.fillRect(0, 0, w, h);
+
+  const cutoff = parseFloat(document.getElementById('filter-cutoff').value);
+  const res = parseFloat(document.getElementById('filter-res').value);
+  const type = document.getElementById('filter-type').value;
+
+  const numPoints = w;
+  const freqs = new Float32Array(numPoints);
+  for (let i = 0; i < numPoints; i++) {
+    freqs[i] = 20 * Math.pow(1000, i / (numPoints - 1));
+  }
+
+  const magResponse = new Float32Array(numPoints);
+  const phaseResponse = new Float32Array(numPoints);
+
+  if (audioCtx) {
+    if (!vizFilter) vizFilter = audioCtx.createBiquadFilter();
+    vizFilter.type = type;
+    vizFilter.frequency.value = cutoff;
+    vizFilter.Q.value = res;
+    vizFilter.getFrequencyResponse(freqs, magResponse, phaseResponse);
+  } else {
+    for (let i = 0; i < numPoints; i++) {
+      const ratio = freqs[i] / cutoff;
+      if (type === 'lowpass') {
+        const q = Math.max(res, 0.5);
+        magResponse[i] = 1 / Math.sqrt(Math.pow(1 - ratio * ratio, 2) + Math.pow(ratio / q, 2));
+      } else if (type === 'highpass') {
+        const q = Math.max(res, 0.5);
+        const r2 = ratio * ratio;
+        magResponse[i] = r2 / Math.sqrt(Math.pow(1 - r2, 2) + Math.pow(ratio / q, 2));
+      } else if (type === 'bandpass') {
+        const q = Math.max(res, 0.5);
+        magResponse[i] = (ratio / q) / Math.sqrt(Math.pow(1 - ratio * ratio, 2) + Math.pow(ratio / q, 2));
+      } else {
+        magResponse[i] = 1;
+      }
+    }
+  }
+
+  const minDb = -30;
+  const maxDb = 18;
+  const dbRange = maxDb - minDb;
+
+  filterCanvasCtx.strokeStyle = '#222';
+  filterCanvasCtx.lineWidth = 1;
+  const zeroY = h * (1 - (0 - minDb) / dbRange);
+  filterCanvasCtx.beginPath();
+  filterCanvasCtx.moveTo(0, zeroY + 0.5);
+  filterCanvasCtx.lineTo(w, zeroY + 0.5);
+  filterCanvasCtx.stroke();
+
+  const anyActive = voices.some(v => v.active);
+  filterCanvasCtx.strokeStyle = anyActive ? '#e0e0e0' : '#555';
+  filterCanvasCtx.lineWidth = 1.5;
+  filterCanvasCtx.beginPath();
+  for (let i = 0; i < numPoints; i++) {
+    const db = 20 * Math.log10(Math.max(magResponse[i], 0.0001));
+    const y = h * (1 - (db - minDb) / dbRange);
+    const cy = Math.max(0, Math.min(h, y));
+    if (i === 0) filterCanvasCtx.moveTo(i, cy);
+    else filterCanvasCtx.lineTo(i, cy);
+  }
+  filterCanvasCtx.stroke();
+}
+
+// ── RENDER LOOP ──────────────────────────────────
+function pad(s) {
+  return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║';
+}
+function center(s) {
+  const l = Math.floor((W - s.length) / 2);
+  return '║' + ' '.repeat(l) + s + ' '.repeat(W - s.length - l) + '║';
+}
+function hBar(ch) { return '╠' + ch.repeat(W) + '╣'; }
+
+const CTRL_ROWS = 18;
+
+function render() {
+  tick++;
+  const lines = [];
+
+  // Title
+  lines.push('╔' + '═'.repeat(W) + '╗');
+  lines.push(center(''));
+  lines.push(center('B B   S Y N T H   v1.0'));
+  lines.push(center(''));
+  lines.push(hBar('═'));
+
+  // Status area
+  const midiName = selectedInputId && midiAccess
+    ? (midiAccess.inputs.get(selectedInputId)?.name || 'NONE').substring(0, 20)
+    : 'NONE';
+  const activeCount = voices.filter(v => v.active).length;
+  const hasActive = activeCount > 0;
+  const noteStr = hasActive ? lastNoteName.padEnd(4) : '--  ';
+  const velStr = hasActive ? lastVel : '---';
+  const voiceStr = hasActive ? activeCount + '/' + maxVoices : maxVoices + '';
+  const statusTxt = hasActive ? '● GATE  [' + voiceStr + ']' : '  READY [' + voiceStr + ']';
+
+  lines.push(pad('  MIDI: ' + midiName.padEnd(22) + 'NOTE: ' + noteStr + 'VEL: ' + velStr + '  CH: ' + lastCh));
+  lines.push(pad('  STATUS: ' + statusTxt));
+
+  if (errorMsg) {
+    lines.push(pad('  ' + errorMsg));
+  } else {
+    lines.push(pad(''));
+  }
+
+  lines.push(hBar('═'));
+
+  // Blank rows for control overlay
+  for (let i = 0; i < CTRL_ROWS; i++) {
+    lines.push(pad(''));
+  }
+
+  lines.push('╚' + '═'.repeat(W) + '╝');
+
+  elDisplay.textContent = lines.join('\n');
+
+  // Position control panel using actual character bounding boxes
+  const panel = document.getElementById('control-panel');
+  const displayEl = elDisplay;
+  const lineH = displayEl.scrollHeight / lines.length;
+  const ctrlStartLine = lines.length - CTRL_ROWS - 1;
+  const crtRect = document.getElementById('crt').getBoundingClientRect();
+  const textNode = displayEl.firstChild;
+  if (textNode) {
+    const content = displayEl.textContent;
+    const firstNewline = content.indexOf('\n');
+    const range = document.createRange();
+    range.setStart(textNode, 1);
+    range.setEnd(textNode, 2);
+    const leftCharRect = range.getBoundingClientRect();
+    range.setStart(textNode, firstNewline - 1);
+    range.setEnd(textNode, firstNewline);
+    const rightCharRect = range.getBoundingClientRect();
+    panel.style.top = (ctrlStartLine * lineH + 28) + 'px';
+    panel.style.bottom = (lineH + 28) + 'px';
+    panel.style.left = (leftCharRect.right - crtRect.left + 4) + 'px';
+    panel.style.right = (crtRect.right - rightCharRect.left + 4) + 'px';
+  }
+
+  // Draw visualizations
+  drawLfoCurve();
+  drawOscWaveform();
+  drawFilterCurve();
+  drawEnvCurve();
+
+  requestAnimationFrame(render);
+}
+
+// ── COLORS ───────────────────────────────────────
+function applyColors() {
+  const bg = document.getElementById('color-bg').value;
+  const txt = document.getElementById('color-text').value;
+  document.getElementById('crt').style.background = bg;
+  elDisplay.style.color = txt;
+  elDisplay.style.textShadow = `0 0 8px ${txt}55`;
+  document.body.style.background = bg;
+  document.getElementById('crt').style.borderColor = txt + '33';
+}
+
+// ── KEYBOARD FALLBACK (for testing without MIDI) ──
+const KB_MAP = {
+  'a': 60, 'w': 61, 's': 62, 'e': 63, 'd': 64,
+  'f': 65, 't': 66, 'g': 67, 'y': 68, 'h': 69,
+  'u': 70, 'j': 71, 'k': 72, 'o': 73, 'l': 74,
+  'p': 75, ';': 76
+};
+const keysHeld = new Set();
+
+document.addEventListener('keydown', (e) => {
+  if (e.repeat) return;
+  const note = KB_MAP[e.key.toLowerCase()];
+  if (note !== undefined && !keysHeld.has(e.key.toLowerCase())) {
+    if (document.activeElement && document.activeElement !== document.body) {
+      document.activeElement.blur();
+    }
+    keysHeld.add(e.key.toLowerCase());
+    noteOn(note, 100, 1);
+    e.preventDefault();
+  }
+});
+
+document.addEventListener('keyup', (e) => {
+  const key = e.key.toLowerCase();
+  const note = KB_MAP[key];
+  if (note !== undefined) {
+    keysHeld.delete(key);
+    noteOff(note);
+  }
+});
+
+// ── DOUBLE-CLICK TO RESET DEFAULTS ──────────────
+const DEFAULTS = {
+  'lfo-shape': 'sine', 'lfo-rate': 20, 'lfo-pitch': 0, 'lfo-filter': 0, 'lfo-amp': 0,
+  'osc-type': 'classic', 'wave-pos': 0, 'osc-octave': 0, 'osc-detune': 0,
+  'filter-type': 'lowpass', 'filter-cutoff': 8000, 'filter-res': 1, 'filter-env': 0,
+  'env-a': 10, 'env-d': 200, 'env-s': 70, 'env-r': 300,
+  'master-vol': 75, 'voice-count': 8,
+};
+Object.keys(DEFAULTS).forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (el.tagName === 'SELECT') {
+    el.addEventListener('dblclick', () => {
+      el.value = DEFAULTS[id];
+      el.dispatchEvent(new Event('change'));
+    });
+  } else {
+    let lastDown = 0;
+    el.addEventListener('pointerdown', (e) => {
+      const now = Date.now();
+      if (now - lastDown < 350) {
+        e.preventDefault();
+        el.value = DEFAULTS[id];
+        el.dispatchEvent(new Event('input'));
+        lastDown = 0;
+      } else {
+        lastDown = now;
+      }
+    });
+  }
+});
+
+// ── INIT ─────────────────────────────────────────
+drawEnvCurve();
+document.getElementById('osc-type').addEventListener('change', drawOscWaveform);
+render();
+detectMidi();
+</script>
+</body>
+</html>
