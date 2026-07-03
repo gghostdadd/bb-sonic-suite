@@ -1587,13 +1587,13 @@ function scaleCrt() {
   }
 }
 window.addEventListener('resize', scaleCrt);
-requestAnimationFrame(scaleCrt);
 
 // ── INIT ─────────────────────────────────────────
 drawEnvCurve();
 document.getElementById('osc-type').addEventListener('change', drawOscWaveform);
 render();
 detectMidi();
+scaleCrt();
 </script>
 </body>
 </html>
