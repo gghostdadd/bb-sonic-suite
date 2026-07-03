@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>BB SYNTH</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1572,6 +1572,22 @@ Object.keys(DEFAULTS).forEach(id => {
     });
   }
 });
+
+// ── SCALING ──────────────────────────────────────
+function scaleCrt() {
+  const crt = document.getElementById('crt');
+  crt.style.transform = '';
+  crt.style.transformOrigin = 'top center';
+  const pad = 16;
+  const crtW = crt.scrollWidth;
+  const vpW = window.innerWidth;
+  if (crtW + pad * 2 > vpW) {
+    const s = (vpW - pad * 2) / crtW;
+    crt.style.transform = `scale(${s})`;
+  }
+}
+window.addEventListener('resize', scaleCrt);
+requestAnimationFrame(scaleCrt);
 
 // ── INIT ─────────────────────────────────────────
 drawEnvCurve();
