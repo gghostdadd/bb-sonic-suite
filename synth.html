@@ -335,12 +335,16 @@ input[type="range"]::-webkit-slider-thumb {
         <div class="section-label">FILTER</div>
         <canvas id="filter-canvas"></canvas>
         <div class="param-row">
-          <span class="param-label">TYPE</span>
-          <select id="filter-type" class="crt-select" style="width:90px; flex:0 0 auto;">
-            <option value="lowpass">LOWPASS</option>
-            <option value="highpass">HIGHPASS</option>
-            <option value="bandpass">BANDPASS</option>
+          <span class="param-label" style="width:28px;">TYPE</span>
+          <select id="filter-type" class="crt-select" style="width:56px; flex:0 0 auto;">
+            <option value="lowpass">LP</option>
+            <option value="highpass">HP</option>
+            <option value="bandpass">BP</option>
             <option value="notch">NOTCH</option>
+          </select>
+          <select id="filter-slope" class="crt-select" style="width:48px; flex:0 0 auto;">
+            <option value="12">12dB</option>
+            <option value="24">24dB</option>
           </select>
         </div>
         <div class="param-row">
@@ -696,20 +700,38 @@ function createVoice() {
   const osc = audioCtx.createOscillator();
   osc.frequency.value = 440;
 
+  const fType = document.getElementById('filter-type').value;
+  const fFreq = cutoffFromSlider(parseInt(document.getElementById('filter-cutoff').value));
+  const fQ = parseFloat(document.getElementById('filter-res').value);
+  const is24 = document.getElementById('filter-slope').value === '24';
+
   const filter = audioCtx.createBiquadFilter();
-  filter.type = document.getElementById('filter-type').value;
-  filter.frequency.value = cutoffFromSlider(parseInt(document.getElementById('filter-cutoff').value));
-  filter.Q.value = parseFloat(document.getElementById('filter-res').value);
+  filter.type = fType;
+  filter.frequency.value = fFreq;
+  filter.Q.value = fQ;
+
+  const filter2 = audioCtx.createBiquadFilter();
+  filter2.type = fType;
+  filter2.frequency.value = fFreq;
+  filter2.Q.value = fQ;
 
   const env = audioCtx.createGain();
   env.gain.value = 0;
 
   osc.connect(filter);
-  filter.connect(env);
+  if (is24) {
+    filter.connect(filter2);
+    filter2.connect(env);
+  } else {
+    filter.connect(env);
+  }
   env.connect(masterGain);
 
   if (lfoPitchGain) lfoPitchGain.connect(osc.detune);
-  if (lfoFilterGain) lfoFilterGain.connect(filter.frequency);
+  if (lfoFilterGain) {
+    lfoFilterGain.connect(filter.frequency);
+    if (is24) lfoFilterGain.connect(filter2.frequency);
+  }
 
   const wt = getInterpolatedPartials(currentBankName, currentWavePos);
   if (wt) {
@@ -719,13 +741,14 @@ function createVoice() {
 
   osc.start();
 
-  return { osc, filter, env, note: -1, active: false, startTime: 0, releaseTime: 0, order: 0 };
+  return { osc, filter, filter2, env, note: -1, active: false, startTime: 0, releaseTime: 0, order: 0 };
 }
 
 function destroyVoice(v) {
   v.osc.stop();
   v.osc.disconnect();
   v.filter.disconnect();
+  v.filter2.disconnect();
   v.env.disconnect();
 }
 
@@ -786,11 +809,13 @@ function triggerAttack(voice, velocity) {
   const fenvAmt = parseInt(document.getElementById('filter-env').value) / 100;
   if (fenvAmt > 0) {
     const baseCutoff = cutoffFromSlider(parseInt(document.getElementById('filter-cutoff').value));
-    const peak = Math.min(20000, baseCutoff + fenvAmt * (20000 - baseCutoff));
-    voice.filter.frequency.cancelScheduledValues(now);
-    voice.filter.frequency.setValueAtTime(voice.filter.frequency.value, now);
-    voice.filter.frequency.linearRampToValueAtTime(peak, now + a);
-    voice.filter.frequency.linearRampToValueAtTime(baseCutoff, now + a + d);
+    const fPeak = Math.min(20000, baseCutoff + fenvAmt * (20000 - baseCutoff));
+    for (const f of [voice.filter, voice.filter2]) {
+      f.frequency.cancelScheduledValues(now);
+      f.frequency.setValueAtTime(f.frequency.value, now);
+      f.frequency.linearRampToValueAtTime(fPeak, now + a);
+      f.frequency.linearRampToValueAtTime(baseCutoff, now + a + d);
+    }
   }
 
   voice.active = true;
@@ -811,9 +836,11 @@ function triggerRelease(voice) {
   const fenvAmt = parseInt(document.getElementById('filter-env').value) / 100;
   if (fenvAmt > 0) {
     const baseCutoff = cutoffFromSlider(parseInt(document.getElementById('filter-cutoff').value));
-    voice.filter.frequency.cancelScheduledValues(now);
-    voice.filter.frequency.setValueAtTime(voice.filter.frequency.value, now);
-    voice.filter.frequency.linearRampToValueAtTime(baseCutoff, now + r);
+    for (const f of [voice.filter, voice.filter2]) {
+      f.frequency.cancelScheduledValues(now);
+      f.frequency.setValueAtTime(f.frequency.value, now);
+      f.frequency.linearRampToValueAtTime(baseCutoff, now + r);
+    }
   }
 
   voice.active = false;
@@ -858,19 +885,24 @@ function noteOff(midi) {
 // ── MIDI CC MAPPING ──────────────────────────────
 function assignCC(cc, paramId) {
   if (paramToCC[paramId] !== undefined) {
-    delete ccToParam[paramToCC[paramId]];
+    const oldCC = paramToCC[paramId];
+    if (ccToParam[oldCC]) {
+      ccToParam[oldCC] = ccToParam[oldCC].filter(p => p !== paramId);
+      if (ccToParam[oldCC].length === 0) delete ccToParam[oldCC];
+    }
   }
-  if (ccToParam[cc]) {
-    delete paramToCC[ccToParam[cc]];
-  }
-  ccToParam[cc] = paramId;
+  if (!ccToParam[cc]) ccToParam[cc] = [];
+  if (!ccToParam[cc].includes(paramId)) ccToParam[cc].push(paramId);
   paramToCC[paramId] = cc;
 }
 
 function clearCC(paramId) {
   const cc = paramToCC[paramId];
   if (cc !== undefined) {
-    delete ccToParam[cc];
+    if (ccToParam[cc]) {
+      ccToParam[cc] = ccToParam[cc].filter(p => p !== paramId);
+      if (ccToParam[cc].length === 0) delete ccToParam[cc];
+    }
     delete paramToCC[paramId];
   }
 }
@@ -966,7 +998,7 @@ function closeCCPopupOutside(e) {
 const CC_PARAMS = [
   'lfo-shape', 'lfo-rate', 'lfo-pitch', 'lfo-filter', 'lfo-amp',
   'osc-type', 'wave-pos', 'osc-octave', 'osc-detune',
-  'filter-type', 'filter-cutoff', 'filter-res', 'filter-env',
+  'filter-type', 'filter-slope', 'filter-cutoff', 'filter-res', 'filter-env',
   'env-a', 'env-d', 'env-s', 'env-r',
   'master-vol',
 ];
@@ -998,7 +1030,7 @@ function onMidiMessage(e) {
       closeCCPopup(false);
     }
     if (ccToParam[data1]) {
-      applyCCValue(ccToParam[data1], data2);
+      for (const pid of ccToParam[data1]) applyCCValue(pid, data2);
     }
   }
 }
@@ -1062,7 +1094,11 @@ document.getElementById('wave-pos').addEventListener('input', () => {
 
 document.getElementById('filter-type').addEventListener('change', () => {
   const t = document.getElementById('filter-type').value;
-  for (const v of voices) v.filter.type = t;
+  for (const v of voices) { v.filter.type = t; v.filter2.type = t; }
+});
+
+document.getElementById('filter-slope').addEventListener('change', () => {
+  if (audioCtx) rebuildVoices();
 });
 
 document.getElementById('filter-cutoff').addEventListener('input', () => {
@@ -1073,6 +1109,8 @@ document.getElementById('filter-cutoff').addEventListener('input', () => {
     for (const v of voices) {
       v.filter.frequency.cancelScheduledValues(now);
       v.filter.frequency.setValueAtTime(freq, now);
+      v.filter2.frequency.cancelScheduledValues(now);
+      v.filter2.frequency.setValueAtTime(freq, now);
     }
   }
 });
@@ -1080,7 +1118,7 @@ document.getElementById('filter-cutoff').addEventListener('input', () => {
 document.getElementById('filter-res').addEventListener('input', () => {
   const val = parseFloat(document.getElementById('filter-res').value);
   document.getElementById('res-val').textContent = val.toFixed(1);
-  for (const v of voices) v.filter.Q.value = val;
+  for (const v of voices) { v.filter.Q.value = val; v.filter2.Q.value = val; }
 });
 
 document.getElementById('filter-env').addEventListener('input', () => {
@@ -1366,12 +1404,20 @@ function drawFilterCurve() {
   const magResponse = new Float32Array(numPoints);
   const phaseResponse = new Float32Array(numPoints);
 
+  const is24 = document.getElementById('filter-slope').value === '24';
+
   if (audioCtx) {
     if (!vizFilter) vizFilter = audioCtx.createBiquadFilter();
     vizFilter.type = type;
     vizFilter.frequency.value = cutoff;
     vizFilter.Q.value = res;
     vizFilter.getFrequencyResponse(freqs, magResponse, phaseResponse);
+    if (is24) {
+      const mag2 = new Float32Array(numPoints);
+      const phase2 = new Float32Array(numPoints);
+      vizFilter.getFrequencyResponse(freqs, mag2, phase2);
+      for (let i = 0; i < numPoints; i++) magResponse[i] *= mag2[i];
+    }
   } else {
     for (let i = 0; i < numPoints; i++) {
       const ratio = freqs[i] / cutoff;
@@ -1388,6 +1434,7 @@ function drawFilterCurve() {
       } else {
         magResponse[i] = 1;
       }
+      if (is24) magResponse[i] *= magResponse[i];
     }
   }
 
@@ -1564,7 +1611,7 @@ document.addEventListener('keyup', (e) => {
 const DEFAULTS = {
   'lfo-shape': 'sine', 'lfo-rate': 20, 'lfo-pitch': 0, 'lfo-filter': 0, 'lfo-amp': 0,
   'osc-type': 'classic', 'wave-pos': 0, 'osc-octave': 0, 'osc-detune': 0,
-  'filter-type': 'lowpass', 'filter-cutoff': 870, 'filter-res': 1, 'filter-env': 0,
+  'filter-type': 'lowpass', 'filter-slope': '12', 'filter-cutoff': 870, 'filter-res': 1, 'filter-env': 0,
   'env-a': 10, 'env-d': 200, 'env-s': 70, 'env-r': 300,
   'master-vol': 75, 'voice-count': 8,
 };
