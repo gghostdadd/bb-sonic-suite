@@ -1013,6 +1013,18 @@ CC_PARAMS.forEach(id => {
 });
 
 // ── MIDI HANDLING ────────────────────────────────
+const PITCH_BEND_RANGE = 200;
+let currentPitchBend = 0;
+
+function applyPitchBend(cents) {
+  currentPitchBend = cents;
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  for (const v of voices) {
+    v.osc.detune.setTargetAtTime(cents + parseInt(document.getElementById('osc-detune').value), now, 0.005);
+  }
+}
+
 function onMidiMessage(e) {
   const [status, data1, data2] = e.data;
   const cmd = status & 0xF0;
@@ -1024,6 +1036,9 @@ function onMidiMessage(e) {
     noteOn(data1, data2, ch);
   } else if (cmd === 0x80 || (cmd === 0x90 && data2 === 0)) {
     noteOff(data1);
+  } else if (cmd === 0xE0) {
+    const bend = ((data2 << 7) | data1) - 8192;
+    applyPitchBend((bend / 8192) * PITCH_BEND_RANGE);
   } else if (cmd === 0xB0) {
     if (ccLearnTarget) {
       assignCC(data1, ccLearnTarget);
