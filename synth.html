@@ -412,6 +412,11 @@ input[type="range"]::-webkit-slider-thumb {
           <input type="range" id="master-vol" min="0" max="100" value="75" step="1">
           <span class="param-value" id="vol-val">75%</span>
         </div>
+        <div class="param-row">
+          <span class="param-label">VEL</span>
+          <input type="range" id="vel-sens" min="0" max="100" value="50" step="1">
+          <span class="param-value" id="vel-val">50%</span>
+        </div>
       </div>
 
       <div class="divider"></div>
@@ -811,7 +816,8 @@ function triggerAttack(voice, velocity) {
   const a = parseInt(document.getElementById('env-a').value) / 1000;
   const d = parseInt(document.getElementById('env-d').value) / 1000;
   const s = parseInt(document.getElementById('env-s').value) / 100;
-  const vel = velocity / 127;
+  const sens = parseInt(document.getElementById('vel-sens').value) / 100;
+  const vel = sens * (velocity / 127) + (1 - sens);
 
   const peak = vel * 0.15;
 
@@ -1014,7 +1020,7 @@ const CC_PARAMS = [
   'osc-type', 'wave-pos', 'osc-octave', 'osc-detune',
   'filter-type', 'filter-slope', 'filter-cutoff', 'filter-res', 'filter-env',
   'env-a', 'env-d', 'env-s', 'env-r',
-  'master-vol',
+  'master-vol', 'vel-sens',
 ];
 
 CC_PARAMS.forEach(id => {
@@ -1224,6 +1230,10 @@ document.getElementById('master-vol').addEventListener('input', () => {
   const v = parseInt(document.getElementById('master-vol').value);
   document.getElementById('vol-val').textContent = v + '%';
   updateMasterLevel();
+});
+
+document.getElementById('vel-sens').addEventListener('input', () => {
+  document.getElementById('vel-val').textContent = document.getElementById('vel-sens').value + '%';
 });
 
 // ── LFO DISPLAY ─────────────────────────────────
@@ -1642,7 +1652,7 @@ const DEFAULTS = {
   'osc-type': 'classic', 'wave-pos': 0, 'osc-octave': 0, 'osc-detune': 0,
   'filter-type': 'lowpass', 'filter-slope': '12', 'filter-cutoff': 870, 'filter-res': 1, 'filter-env': 0,
   'env-a': 10, 'env-d': 200, 'env-s': 70, 'env-r': 300,
-  'master-vol': 75, 'voice-count': 8,
+  'master-vol': 75, 'vel-sens': 50, 'voice-count': 8,
 };
 Object.keys(DEFAULTS).forEach(id => {
   const el = document.getElementById(id);
