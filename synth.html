@@ -345,7 +345,7 @@ input[type="range"]::-webkit-slider-thumb {
         </div>
         <div class="param-row">
           <span class="param-label">CUTOFF</span>
-          <input type="range" id="filter-cutoff" min="20" max="20000" value="8000" step="1">
+          <input type="range" id="filter-cutoff" min="0" max="1000" value="870" step="1">
           <span class="param-value" id="cutoff-val">8.0 kHz</span>
         </div>
         <div class="param-row">
@@ -477,6 +477,10 @@ input[type="range"]::-webkit-slider-thumb {
 
 <script>
 const W = 90;
+
+function cutoffFromSlider(v) {
+  return 20 * Math.pow(1000, v / 1000);
+}
 
 // Audio state
 let audioCtx = null;
@@ -694,7 +698,7 @@ function createVoice() {
 
   const filter = audioCtx.createBiquadFilter();
   filter.type = document.getElementById('filter-type').value;
-  filter.frequency.value = parseFloat(document.getElementById('filter-cutoff').value);
+  filter.frequency.value = cutoffFromSlider(parseInt(document.getElementById('filter-cutoff').value));
   filter.Q.value = parseFloat(document.getElementById('filter-res').value);
 
   const env = audioCtx.createGain();
@@ -781,7 +785,7 @@ function triggerAttack(voice, velocity) {
 
   const fenvAmt = parseInt(document.getElementById('filter-env').value) / 100;
   if (fenvAmt > 0) {
-    const baseCutoff = parseFloat(document.getElementById('filter-cutoff').value);
+    const baseCutoff = cutoffFromSlider(parseInt(document.getElementById('filter-cutoff').value));
     const peak = Math.min(20000, baseCutoff + fenvAmt * (20000 - baseCutoff));
     voice.filter.frequency.cancelScheduledValues(now);
     voice.filter.frequency.setValueAtTime(voice.filter.frequency.value, now);
@@ -806,7 +810,7 @@ function triggerRelease(voice) {
 
   const fenvAmt = parseInt(document.getElementById('filter-env').value) / 100;
   if (fenvAmt > 0) {
-    const baseCutoff = parseFloat(document.getElementById('filter-cutoff').value);
+    const baseCutoff = cutoffFromSlider(parseInt(document.getElementById('filter-cutoff').value));
     voice.filter.frequency.cancelScheduledValues(now);
     voice.filter.frequency.setValueAtTime(voice.filter.frequency.value, now);
     voice.filter.frequency.linearRampToValueAtTime(baseCutoff, now + r);
@@ -1062,13 +1066,13 @@ document.getElementById('filter-type').addEventListener('change', () => {
 });
 
 document.getElementById('filter-cutoff').addEventListener('input', () => {
-  const val = parseFloat(document.getElementById('filter-cutoff').value);
-  document.getElementById('cutoff-val').textContent = val >= 1000 ? (val / 1000).toFixed(1) + ' kHz' : Math.round(val) + ' Hz';
+  const freq = cutoffFromSlider(parseInt(document.getElementById('filter-cutoff').value));
+  document.getElementById('cutoff-val').textContent = freq >= 1000 ? (freq / 1000).toFixed(1) + ' kHz' : Math.round(freq) + ' Hz';
   if (audioCtx) {
     const now = audioCtx.currentTime;
     for (const v of voices) {
       v.filter.frequency.cancelScheduledValues(now);
-      v.filter.frequency.setValueAtTime(val, now);
+      v.filter.frequency.setValueAtTime(freq, now);
     }
   }
 });
@@ -1349,7 +1353,7 @@ function drawFilterCurve() {
   filterCanvasCtx.fillStyle = '#0a0a0a';
   filterCanvasCtx.fillRect(0, 0, w, h);
 
-  const cutoff = parseFloat(document.getElementById('filter-cutoff').value);
+  const cutoff = cutoffFromSlider(parseInt(document.getElementById('filter-cutoff').value));
   const res = parseFloat(document.getElementById('filter-res').value);
   const type = document.getElementById('filter-type').value;
 
@@ -1560,7 +1564,7 @@ document.addEventListener('keyup', (e) => {
 const DEFAULTS = {
   'lfo-shape': 'sine', 'lfo-rate': 20, 'lfo-pitch': 0, 'lfo-filter': 0, 'lfo-amp': 0,
   'osc-type': 'classic', 'wave-pos': 0, 'osc-octave': 0, 'osc-detune': 0,
-  'filter-type': 'lowpass', 'filter-cutoff': 8000, 'filter-res': 1, 'filter-env': 0,
+  'filter-type': 'lowpass', 'filter-cutoff': 870, 'filter-res': 1, 'filter-env': 0,
   'env-a': 10, 'env-d': 200, 'env-s': 70, 'env-r': 300,
   'master-vol': 75, 'voice-count': 8,
 };
