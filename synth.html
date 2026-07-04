@@ -1511,33 +1511,48 @@ function applyColors() {
 }
 
 // ── KEYBOARD FALLBACK (for testing without MIDI) ──
-const KB_MAP = {
-  'a': 60, 'w': 61, 's': 62, 'e': 63, 'd': 64,
-  'f': 65, 't': 66, 'g': 67, 'y': 68, 'h': 69,
-  'u': 70, 'j': 71, 'k': 72, 'o': 73, 'l': 74,
-  'p': 75, ';': 76
+const KB_OFFSETS = {
+  'a': 0, 'w': 1, 's': 2, 'e': 3, 'd': 4,
+  'f': 5, 't': 6, 'g': 7, 'y': 8, 'h': 9,
+  'u': 10, 'j': 11, 'k': 12, 'o': 13, 'l': 14,
+  'p': 15, ';': 16
 };
+let kbOctave = 0;
 const keysHeld = new Set();
 
 document.addEventListener('keydown', (e) => {
   if (e.repeat) return;
-  const note = KB_MAP[e.key.toLowerCase()];
-  if (note !== undefined && !keysHeld.has(e.key.toLowerCase())) {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+  const key = e.key.toLowerCase();
+
+  if (key === 'z') {
+    e.preventDefault();
+    if (kbOctave > -2) { kbOctave--; keysHeld.clear(); }
+    return;
+  }
+  if (key === 'x') {
+    e.preventDefault();
+    if (kbOctave < 4) { kbOctave++; keysHeld.clear(); }
+    return;
+  }
+
+  const offset = KB_OFFSETS[key];
+  if (offset !== undefined && !keysHeld.has(key)) {
     if (document.activeElement && document.activeElement !== document.body) {
       document.activeElement.blur();
     }
-    keysHeld.add(e.key.toLowerCase());
-    noteOn(note, 100, 1);
+    keysHeld.add(key);
+    noteOn(60 + kbOctave * 12 + offset, 100, 1);
     e.preventDefault();
   }
 });
 
 document.addEventListener('keyup', (e) => {
   const key = e.key.toLowerCase();
-  const note = KB_MAP[key];
-  if (note !== undefined) {
+  const offset = KB_OFFSETS[key];
+  if (offset !== undefined) {
     keysHeld.delete(key);
-    noteOff(note);
+    noteOff(60 + kbOctave * 12 + offset);
   }
 });
 
