@@ -444,9 +444,9 @@ input[type="range"]::-webkit-slider-thumb {
       <div class="divider"></div>
 
       <div class="section section-env">
-        <div class="param-row" style="gap:8px;">
-          <span class="param-label">CH</span>
-          <select id="midi-ch" class="crt-select" style="width:46px;">
+        <div class="param-row" style="gap:6px;">
+          <span class="param-label" style="width:16px;">CH</span>
+          <select id="midi-ch" class="crt-select" style="width:42px;">
             <option value="0">ALL</option>
             <option value="1">1</option>
             <option value="2">2</option>
@@ -465,7 +465,8 @@ input[type="range"]::-webkit-slider-thumb {
             <option value="15">15</option>
             <option value="16">16</option>
           </select>
-          <button class="btn" onclick="detectMidi()" style="padding:3px 8px; font-size:10px;">DETECT</button>
+          <button class="btn" onclick="detectMidi()" style="padding:3px 6px; font-size:10px;">DETECT</button>
+          <button class="btn" onclick="panic()" style="padding:3px 6px; font-size:10px;">PANIC</button>
         </div>
       </div>
     </div>
@@ -750,6 +751,19 @@ function destroyVoice(v) {
   v.filter.disconnect();
   v.filter2.disconnect();
   v.env.disconnect();
+}
+
+function panic() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  for (const v of voices) {
+    v.env.gain.cancelScheduledValues(now);
+    v.env.gain.setValueAtTime(0, now);
+    v.active = false;
+    v.note = -1;
+  }
+  keysHeld.clear();
+  currentPitchBend = 0;
 }
 
 function rebuildVoices() {
