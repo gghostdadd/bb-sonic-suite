@@ -407,6 +407,48 @@ input[type="range"]::-webkit-slider-thumb {
     <div style="height:1px; background:#333; margin:0 18px;"></div>
     <div class="section-row">
       <div class="section">
+        <div class="section-label">DELAY</div>
+        <div class="param-row">
+          <span class="param-label">TIME</span>
+          <input type="range" id="delay-time" min="1" max="1000" value="300" step="1">
+          <span class="param-value" id="dtime-val">300 ms</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">FDBK</span>
+          <input type="range" id="delay-fdbk" min="0" max="95" value="40" step="1">
+          <span class="param-value" id="dfdbk-val">40%</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">MIX</span>
+          <input type="range" id="delay-mix" min="0" max="100" value="0" step="1">
+          <span class="param-value" id="dmix-val">0%</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section">
+        <div class="section-label">REVERB</div>
+        <div class="param-row">
+          <span class="param-label">SIZE</span>
+          <input type="range" id="reverb-size" min="1" max="100" value="50" step="1">
+          <span class="param-value" id="rsize-val">50%</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">DAMP</span>
+          <input type="range" id="reverb-damp" min="0" max="100" value="50" step="1">
+          <span class="param-value" id="rdamp-val">50%</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">MIX</span>
+          <input type="range" id="reverb-mix" min="0" max="100" value="0" step="1">
+          <span class="param-value" id="rmix-val">0%</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section">
         <div class="param-row">
           <span class="param-label">VOL</span>
           <input type="range" id="master-vol" min="0" max="150" value="75" step="1">
@@ -417,11 +459,6 @@ input[type="range"]::-webkit-slider-thumb {
           <input type="range" id="vel-sens" min="0" max="100" value="50" step="1">
           <span class="param-value" id="vel-val">50%</span>
         </div>
-      </div>
-
-      <div class="divider"></div>
-
-      <div class="section">
         <div class="param-row">
           <span class="param-label">VOICES</span>
           <select id="voice-count" class="crt-select" style="width:50px;">
@@ -439,18 +476,13 @@ input[type="range"]::-webkit-slider-thumb {
 
       <div class="section">
         <div class="param-row">
-          <span class="param-label">INPUT</span>
+          <span class="param-label" style="width:32px;">INPUT</span>
           <select id="midi-select" class="crt-select" style="flex:1; min-width:0;">
             <option value="">— NONE —</option>
           </select>
         </div>
-      </div>
-
-      <div class="divider"></div>
-
-      <div class="section section-env">
-        <div class="param-row" style="gap:6px; align-items:flex-start;">
-          <span class="param-label" style="width:16px; line-height:12px;">CH</span>
+        <div class="param-row" style="align-items:flex-start;">
+          <span class="param-label" style="width:32px; line-height:12px;">CH</span>
           <select id="midi-ch" class="crt-select" style="width:42px;">
             <option value="0">ALL</option>
             <option value="1">1</option>
@@ -470,7 +502,7 @@ input[type="range"]::-webkit-slider-thumb {
             <option value="15">15</option>
             <option value="16">16</option>
           </select>
-          <div style="display:flex; flex-direction:column; gap:4px;">
+          <div style="display:flex; flex-direction:column; gap:4px; margin-left:auto;">
             <button class="btn" onclick="detectMidi()" style="padding:3px 6px; font-size:10px; width:50px;">DETECT</button>
             <button class="btn" onclick="panic()" style="padding:3px 6px; font-size:10px; width:50px;">PANIC</button>
           </div>
@@ -499,6 +531,15 @@ let audioCtx = null;
 let masterGain = null;
 let softClipper = null;
 let analyserNode = null;
+let delayNode = null;
+let delayFeedback = null;
+let delayFilter = null;
+let delayDry = null;
+let delayWet = null;
+let reverbDry = null;
+let reverbWet = null;
+let reverbCombs = [];
+let reverbAllpasses = [];
 let voices = [];
 let maxVoices = 8;
 let voiceCounter = 0;
@@ -688,7 +729,85 @@ function ensureAudio() {
   analyserNode = audioCtx.createAnalyser();
   analyserNode.fftSize = 2048;
 
-  masterGain.connect(softClipper);
+  delayNode = audioCtx.createDelay(3.0);
+  delayNode.delayTime.value = parseInt(document.getElementById('delay-time').value) / 1000;
+  delayFeedback = audioCtx.createGain();
+  delayFeedback.gain.value = parseInt(document.getElementById('delay-fdbk').value) / 100;
+  delayFilter = audioCtx.createBiquadFilter();
+  delayFilter.type = 'lowpass';
+  delayFilter.frequency.value = 3000;
+  delayDry = audioCtx.createGain();
+  delayWet = audioCtx.createGain();
+  const mix = parseInt(document.getElementById('delay-mix').value) / 100;
+  delayDry.gain.value = 1;
+  delayWet.gain.value = mix;
+
+  // masterGain → delay dry/wet mix → delayOut → reverb dry/wet mix → softClipper → analyser → dest
+  const delayOut = audioCtx.createGain();
+  masterGain.connect(delayDry);
+  masterGain.connect(delayNode);
+  delayNode.connect(delayFilter);
+  delayFilter.connect(delayFeedback);
+  delayFeedback.connect(delayNode);
+  delayFilter.connect(delayWet);
+  delayDry.connect(delayOut);
+  delayWet.connect(delayOut);
+
+  // Schroeder reverb: 4 parallel comb filters → 2 series allpass filters
+  const combTimes = [0.0297, 0.0371, 0.0411, 0.0437];
+  const sizeVal = parseInt(document.getElementById('reverb-size').value) / 100;
+  const dampVal = parseInt(document.getElementById('reverb-damp').value) / 100;
+  const reverbMix = parseInt(document.getElementById('reverb-mix').value) / 100;
+
+  reverbDry = audioCtx.createGain();
+  reverbDry.gain.value = 1;
+  reverbWet = audioCtx.createGain();
+  reverbWet.gain.value = reverbMix;
+
+  const reverbSum = audioCtx.createGain();
+  reverbSum.gain.value = 0.25;
+  reverbCombs = [];
+  for (const t of combTimes) {
+    const d = audioCtx.createDelay(1.0);
+    d.delayTime.value = t * (0.5 + sizeVal * 1.5);
+    const fb = audioCtx.createGain();
+    fb.gain.value = 0.7 + sizeVal * 0.25;
+    const lp = audioCtx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 2000 + (1 - dampVal) * 16000;
+    delayOut.connect(d);
+    d.connect(lp);
+    lp.connect(fb);
+    fb.connect(d);
+    lp.connect(reverbSum);
+    reverbCombs.push({ delay: d, feedback: fb, filter: lp, baseTime: t });
+  }
+
+  const allpassTimes = [0.005, 0.0017];
+  reverbAllpasses = [];
+  let apInput = reverbSum;
+  for (const t of allpassTimes) {
+    const d = audioCtx.createDelay(0.1);
+    d.delayTime.value = t;
+    const fb = audioCtx.createGain();
+    fb.gain.value = 0.5;
+    const ff = audioCtx.createGain();
+    ff.gain.value = -0.5;
+    const apOut = audioCtx.createGain();
+    apInput.connect(d);
+    d.connect(fb);
+    fb.connect(d);
+    d.connect(apOut);
+    apInput.connect(ff);
+    ff.connect(apOut);
+    reverbAllpasses.push({ delay: d, feedback: fb });
+    apInput = apOut;
+  }
+  apInput.connect(reverbWet);
+
+  delayOut.connect(reverbDry);
+  reverbDry.connect(softClipper);
+  reverbWet.connect(softClipper);
   softClipper.connect(analyserNode);
   analyserNode.connect(audioCtx.destination);
 
@@ -1040,6 +1159,8 @@ const CC_PARAMS = [
   'filter-type', 'filter-slope', 'filter-cutoff', 'filter-res', 'filter-env',
   'env-a', 'env-d', 'env-s', 'env-r',
   'master-vol', 'vel-sens',
+  'delay-time', 'delay-fdbk', 'delay-mix',
+  'reverb-size', 'reverb-damp', 'reverb-mix',
 ];
 
 CC_PARAMS.forEach(id => {
@@ -1261,6 +1382,55 @@ document.getElementById('master-vol').addEventListener('input', () => {
 
 document.getElementById('vel-sens').addEventListener('input', () => {
   document.getElementById('vel-val').textContent = document.getElementById('vel-sens').value + '%';
+});
+
+document.getElementById('delay-time').addEventListener('input', () => {
+  const v = parseInt(document.getElementById('delay-time').value);
+  document.getElementById('dtime-val').textContent = v >= 1000 ? (v / 1000).toFixed(1) + ' s' : v + ' ms';
+  if (delayNode) delayNode.delayTime.setTargetAtTime(v / 1000, audioCtx.currentTime, 0.01);
+});
+
+document.getElementById('delay-fdbk').addEventListener('input', () => {
+  const v = parseInt(document.getElementById('delay-fdbk').value);
+  document.getElementById('dfdbk-val').textContent = v + '%';
+  if (delayFeedback) delayFeedback.gain.setTargetAtTime(v / 100, audioCtx.currentTime, 0.005);
+});
+
+document.getElementById('delay-mix').addEventListener('input', () => {
+  const v = parseInt(document.getElementById('delay-mix').value);
+  document.getElementById('dmix-val').textContent = v + '%';
+  if (delayWet) delayWet.gain.setTargetAtTime(v / 100, audioCtx.currentTime, 0.005);
+});
+
+document.getElementById('reverb-size').addEventListener('input', () => {
+  const v = parseInt(document.getElementById('reverb-size').value);
+  document.getElementById('rsize-val').textContent = v + '%';
+  if (audioCtx) {
+    const s = v / 100;
+    const now = audioCtx.currentTime;
+    for (const c of reverbCombs) {
+      c.delay.delayTime.setTargetAtTime(c.baseTime * (0.5 + s * 1.5), now, 0.01);
+      c.feedback.gain.setTargetAtTime(0.7 + s * 0.25, now, 0.005);
+    }
+  }
+});
+
+document.getElementById('reverb-damp').addEventListener('input', () => {
+  const v = parseInt(document.getElementById('reverb-damp').value);
+  document.getElementById('rdamp-val').textContent = v + '%';
+  if (audioCtx) {
+    const d = v / 100;
+    const now = audioCtx.currentTime;
+    for (const c of reverbCombs) {
+      c.filter.frequency.setTargetAtTime(2000 + (1 - d) * 16000, now, 0.005);
+    }
+  }
+});
+
+document.getElementById('reverb-mix').addEventListener('input', () => {
+  const v = parseInt(document.getElementById('reverb-mix').value);
+  document.getElementById('rmix-val').textContent = v + '%';
+  if (reverbWet) reverbWet.gain.setTargetAtTime(v / 100, audioCtx.currentTime, 0.005);
 });
 
 // ── LFO DISPLAY ─────────────────────────────────
@@ -1540,7 +1710,7 @@ function center(s) {
 }
 function hBar(ch) { return '╠' + ch.repeat(W) + '╣'; }
 
-const CTRL_ROWS = 18;
+const CTRL_ROWS = 22;
 
 function render() {
   tick++;
@@ -1680,6 +1850,8 @@ const DEFAULTS = {
   'filter-type': 'lowpass', 'filter-slope': '12', 'filter-cutoff': 870, 'filter-res': 1, 'filter-env': 0,
   'env-a': 10, 'env-d': 200, 'env-s': 70, 'env-r': 300,
   'master-vol': 75, 'vel-sens': 50, 'voice-count': 8,
+  'delay-time': 300, 'delay-fdbk': 40, 'delay-mix': 0,
+  'reverb-size': 50, 'reverb-damp': 50, 'reverb-mix': 0,
 };
 Object.keys(DEFAULTS).forEach(id => {
   const el = document.getElementById(id);
