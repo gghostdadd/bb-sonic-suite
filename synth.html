@@ -943,7 +943,7 @@ function allocateVoice(midi) {
 // ── ENVELOPE ─────────────────────────────────────
 function triggerAttack(voice, velocity) {
   const now = audioCtx.currentTime;
-  const a = parseInt(document.getElementById('env-a').value) / 1000;
+  const a = Math.max(0.003, parseInt(document.getElementById('env-a').value) / 1000);
   const d = parseInt(document.getElementById('env-d').value) / 1000;
   const s = parseInt(document.getElementById('env-s').value) / 100;
   const sens = parseInt(document.getElementById('vel-sens').value) / 100;
@@ -1011,13 +1011,14 @@ function noteOn(midi, velocity, channel) {
   if (voices.length === 0) rebuildVoices();
 
   const voice = allocateVoice(midi);
+  const now = audioCtx.currentTime;
   if (voice.active && voice.note !== midi) {
-    // Stolen voice — kill its envelope instantly so the old note doesn't hang
-    voice.env.gain.cancelScheduledValues(audioCtx.currentTime);
-    voice.env.gain.setValueAtTime(0, audioCtx.currentTime);
+    voice.env.gain.cancelScheduledValues(now);
+    voice.env.gain.setValueAtTime(voice.env.gain.value, now);
+    voice.env.gain.linearRampToValueAtTime(0, now + 0.003);
   }
   const freq = midiToFreq(midi);
-  voice.osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  voice.osc.frequency.setTargetAtTime(freq, now, 0.001);
   voice.note = midi;
 
   lastNoteName = noteName(midi);
