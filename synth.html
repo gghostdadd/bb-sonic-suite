@@ -409,8 +409,8 @@ input[type="range"]::-webkit-slider-thumb {
       <div class="section">
         <div class="param-row">
           <span class="param-label">VOL</span>
-          <input type="range" id="master-vol" min="0" max="100" value="75" step="1">
-          <span class="param-value" id="vol-val">75%</span>
+          <input type="range" id="master-vol" min="0" max="150" value="75" step="1">
+          <span class="param-value" id="vol-val">113%</span>
         </div>
         <div class="param-row">
           <span class="param-label">VEL</span>
@@ -495,6 +495,7 @@ function cutoffFromSlider(v) {
 // Audio state
 let audioCtx = null;
 let masterGain = null;
+let softClipper = null;
 let analyserNode = null;
 let voices = [];
 let maxVoices = 8;
@@ -670,12 +671,23 @@ function ensureAudio() {
   audioCtx = new AudioContext();
 
   masterGain = audioCtx.createGain();
-  masterGain.gain.value = parseInt(document.getElementById('master-vol').value) / 100;
+  masterGain.gain.value = parseInt(document.getElementById('master-vol').value) / 100 * 1.5;
+
+  softClipper = audioCtx.createWaveShaper();
+  const n = 8192;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i * 2) / n - 1;
+    curve[i] = Math.tanh(x);
+  }
+  softClipper.curve = curve;
+  softClipper.oversample = '4x';
 
   analyserNode = audioCtx.createAnalyser();
   analyserNode.fftSize = 2048;
 
-  masterGain.connect(analyserNode);
+  masterGain.connect(softClipper);
+  softClipper.connect(analyserNode);
   analyserNode.connect(audioCtx.destination);
 
   lfoNode = audioCtx.createOscillator();
@@ -871,7 +883,7 @@ function triggerRelease(voice) {
 // ── VOICE SCALING ────────────────────────────────
 function updateMasterLevel() {
   if (!masterGain) return;
-  const userVol = parseInt(document.getElementById('master-vol').value) / 100;
+  const userVol = parseInt(document.getElementById('master-vol').value) / 100 * 1.5;
   masterGain.gain.setTargetAtTime(userVol, audioCtx.currentTime, 0.015);
 }
 
@@ -1228,7 +1240,7 @@ document.getElementById('lfo-amp').addEventListener('input', () => {
 
 document.getElementById('master-vol').addEventListener('input', () => {
   const v = parseInt(document.getElementById('master-vol').value);
-  document.getElementById('vol-val').textContent = v + '%';
+  document.getElementById('vol-val').textContent = Math.round(v * 1.5) + '%';
   updateMasterLevel();
 });
 
