@@ -471,6 +471,8 @@ input[type="range"]::-webkit-slider-thumb {
             <option value="16">16</option>
           </select>
           <button class="btn" onclick="detectMidi()" style="padding:3px 6px; font-size:10px;">DETECT</button>
+        </div>
+        <div class="param-row" style="gap:6px; justify-content:flex-end;">
           <button class="btn" onclick="panic()" style="padding:3px 6px; font-size:10px;">PANIC</button>
         </div>
       </div>
@@ -893,6 +895,11 @@ function noteOn(midi, velocity, channel) {
   if (voices.length === 0) rebuildVoices();
 
   const voice = allocateVoice(midi);
+  if (voice.active && voice.note !== midi) {
+    // Stolen voice — kill its envelope instantly so the old note doesn't hang
+    voice.env.gain.cancelScheduledValues(audioCtx.currentTime);
+    voice.env.gain.setValueAtTime(0, audioCtx.currentTime);
+  }
   const freq = midiToFreq(midi);
   voice.osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
   voice.note = midi;
