@@ -1162,9 +1162,9 @@ document.getElementById('filter-cutoff').addEventListener('input', () => {
     const now = audioCtx.currentTime;
     for (const v of voices) {
       v.filter.frequency.cancelScheduledValues(now);
-      v.filter.frequency.setValueAtTime(freq, now);
+      v.filter.frequency.setTargetAtTime(freq, now, 0.005);
       v.filter2.frequency.cancelScheduledValues(now);
-      v.filter2.frequency.setValueAtTime(freq, now);
+      v.filter2.frequency.setTargetAtTime(freq, now, 0.005);
     }
   }
 });
@@ -1172,7 +1172,15 @@ document.getElementById('filter-cutoff').addEventListener('input', () => {
 document.getElementById('filter-res').addEventListener('input', () => {
   const val = parseFloat(document.getElementById('filter-res').value);
   document.getElementById('res-val').textContent = val.toFixed(1);
-  for (const v of voices) { v.filter.Q.value = val; v.filter2.Q.value = val; }
+  if (audioCtx) {
+    const now = audioCtx.currentTime;
+    for (const v of voices) {
+      v.filter.Q.cancelScheduledValues(now);
+      v.filter.Q.setTargetAtTime(val, now, 0.005);
+      v.filter2.Q.cancelScheduledValues(now);
+      v.filter2.Q.setTargetAtTime(val, now, 0.005);
+    }
+  }
 });
 
 document.getElementById('filter-env').addEventListener('input', () => {
