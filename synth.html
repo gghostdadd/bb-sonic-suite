@@ -765,13 +765,13 @@ function ensureAudio() {
   reverbWet.gain.value = reverbMix;
 
   const reverbSum = audioCtx.createGain();
-  reverbSum.gain.value = 0.25;
+  reverbSum.gain.value = 0.15;
   reverbCombs = [];
   for (const t of combTimes) {
     const d = audioCtx.createDelay(1.0);
     d.delayTime.value = t * (0.5 + sizeVal * 1.5);
     const fb = audioCtx.createGain();
-    fb.gain.value = 0.7 + sizeVal * 0.25;
+    fb.gain.value = 0.55 + sizeVal * 0.25;
     const lp = audioCtx.createBiquadFilter();
     lp.type = 'lowpass';
     lp.frequency.value = 2000 + (1 - dampVal) * 16000;
@@ -790,16 +790,13 @@ function ensureAudio() {
     const d = audioCtx.createDelay(0.1);
     d.delayTime.value = t;
     const fb = audioCtx.createGain();
-    fb.gain.value = 0.5;
-    const ff = audioCtx.createGain();
-    ff.gain.value = -0.5;
+    fb.gain.value = 0.3;
     const apOut = audioCtx.createGain();
     apInput.connect(d);
     d.connect(fb);
     fb.connect(d);
     d.connect(apOut);
-    apInput.connect(ff);
-    ff.connect(apOut);
+    apInput.connect(apOut);
     reverbAllpasses.push({ delay: d, feedback: fb });
     apInput = apOut;
   }
@@ -1410,7 +1407,7 @@ document.getElementById('reverb-size').addEventListener('input', () => {
     const now = audioCtx.currentTime;
     for (const c of reverbCombs) {
       c.delay.delayTime.setTargetAtTime(c.baseTime * (0.5 + s * 1.5), now, 0.01);
-      c.feedback.gain.setTargetAtTime(0.7 + s * 0.25, now, 0.005);
+      c.feedback.gain.setTargetAtTime(0.55 + s * 0.25, now, 0.005);
     }
   }
 });
