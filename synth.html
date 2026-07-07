@@ -449,8 +449,8 @@ input[type="range"]::-webkit-slider-thumb {
       <div class="divider"></div>
 
       <div class="section section-env">
-        <div class="param-row" style="gap:6px;">
-          <span class="param-label" style="width:16px;">CH</span>
+        <div class="param-row" style="gap:6px; align-items:flex-start;">
+          <span class="param-label" style="width:16px; line-height:12px;">CH</span>
           <select id="midi-ch" class="crt-select" style="width:42px;">
             <option value="0">ALL</option>
             <option value="1">1</option>
@@ -470,10 +470,10 @@ input[type="range"]::-webkit-slider-thumb {
             <option value="15">15</option>
             <option value="16">16</option>
           </select>
-          <button class="btn" onclick="detectMidi()" style="padding:3px 6px; font-size:10px;">DETECT</button>
-        </div>
-        <div class="param-row" style="gap:6px; justify-content:flex-end;">
-          <button class="btn" onclick="panic()" style="padding:3px 6px; font-size:10px;">PANIC</button>
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <button class="btn" onclick="detectMidi()" style="padding:3px 6px; font-size:10px; width:50px;">DETECT</button>
+            <button class="btn" onclick="panic()" style="padding:3px 6px; font-size:10px; width:50px;">PANIC</button>
+          </div>
         </div>
       </div>
     </div>
