@@ -237,6 +237,8 @@ body {
         <option value="5">5.0s</option>
         <option value="10">10s</option>
       </select>
+      <span style="display:inline-block;width:1px;height:20px;background:#333;margin:0 6px;vertical-align:middle;"></span>
+      <button class="btn" id="btn-snap-zero" onclick="toggleSnapToZero()">0X</button>
     </div>
 
     <div class="panel-row">
@@ -318,6 +320,7 @@ let playFromPos = 0;
 let playToPos = 0;
 let loopEnabled = false;
 let selAnchor = null; // I/O selection anchor (sample position or null)
+let snapToZero = false;
 
 let tick = 0;
 let vuL = 0, vuR = 0;
@@ -866,6 +869,35 @@ function drawRuler(w, h, rulerH, numVisible) {
   }
 }
 
+// ── ZERO CROSSING SNAP ──────────────────────────
+function findZeroCrossing(sample) {
+  if (!audioData || !snapToZero) return sample;
+  const data = audioData.left;
+  const len = data.length;
+  if (sample <= 0 || sample >= len - 1) return sample;
+  const maxSearch = Math.min(2048, Math.floor(len / 2));
+  let best = sample;
+  let bestDist = maxSearch + 1;
+  for (let offset = 0; offset <= maxSearch; offset++) {
+    const fwd = sample + offset;
+    if (fwd < len - 1 && data[fwd] * data[fwd + 1] <= 0) {
+      const d = Math.abs(data[fwd]) <= Math.abs(data[fwd + 1]) ? fwd : fwd + 1;
+      if (offset < bestDist) { best = d; bestDist = offset; break; }
+    }
+    const bwd = sample - offset;
+    if (offset > 0 && bwd >= 0 && bwd < len - 1 && data[bwd] * data[bwd + 1] <= 0) {
+      const d = Math.abs(data[bwd]) <= Math.abs(data[bwd + 1]) ? bwd : bwd + 1;
+      if (offset < bestDist) { best = d; bestDist = offset; break; }
+    }
+  }
+  return best;
+}
+
+function toggleSnapToZero() {
+  snapToZero = !snapToZero;
+  document.getElementById('btn-snap-zero').classList.toggle('loop-active', snapToZero);
+}
+
 // ── WAVEFORM INTERACTION ──────────────────────────
 function pixelToSample(px) {
   const frac = px / canvasW;
@@ -880,10 +912,10 @@ function initCanvasEvents() {
     selAnchor = null;
     const rect = waveformCanvas.getBoundingClientRect();
     const px = (clientX - rect.left) * (canvasW / rect.width);
-    const sample = pixelToSample(px);
+    const sample = findZeroCrossing(pixelToSample(px));
     isDragging = true;
     if (shiftKey) {
-      const anchor = cursorPos;
+      const anchor = findZeroCrossing(cursorPos);
       dragStartSample = anchor;
       if (sample < anchor) { selStart = sample; selEnd = anchor; }
       else { selStart = anchor; selEnd = sample; }
@@ -902,7 +934,7 @@ function initCanvasEvents() {
     if (!isDragging || !audioData) return;
     const rect = waveformCanvas.getBoundingClientRect();
     const px = (clientX - rect.left) * (canvasW / rect.width);
-    const sample = pixelToSample(px);
+    const sample = findZeroCrossing(pixelToSample(px));
     if (sample < dragStartSample) { selStart = sample; selEnd = dragStartSample; }
     else { selStart = dragStartSample; selEnd = sample; }
     cursorPos = sample;
