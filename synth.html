@@ -18,13 +18,28 @@ body {
 
 #crt {
   position: relative;
-  background: #000;
+  background: #0c0a02;
   border: 1px solid #333333;
   border-radius: 0;
   padding: 28px 36px;
   max-width: 1000px;
   width: min-content;
   box-shadow: none;
+}
+
+#crt::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.06) 2px,
+    rgba(0, 0, 0, 0.06) 4px
+  );
+  pointer-events: none;
+  z-index: 10;
 }
 
 #display {
@@ -519,7 +534,7 @@ input[type="range"]::-webkit-slider-thumb {
 
     <!-- COLORS -->
     <div class="color-row">
-      <span>BG:</span><input type="color" id="color-bg" value="#000000" onchange="applyColors()">
+      <span>BG:</span><input type="color" id="color-bg" value="#0c0a02" onchange="applyColors()">
       <span>TEXT:</span><input type="color" id="color-text" value="#e0e0e0" onchange="applyColors()">
     </div>
 
@@ -1796,7 +1811,6 @@ function render() {
 function applyColors() {
   const bg = document.getElementById('color-bg').value;
   const txt = document.getElementById('color-text').value;
-  document.body.style.background = bg;
   document.getElementById('crt').style.background = bg;
   elDisplay.style.color = txt;
   elDisplay.style.textShadow = `0 0 8px ${txt}55`;
