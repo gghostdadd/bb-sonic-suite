@@ -307,7 +307,8 @@ input[type="file"] { display: none; }
 /* ─── OUTPUT SECTION ─── */
 .output-inner {
   display: flex;
-  gap: 0;
+  flex-wrap: wrap;
+  gap: 6px 0;
   width: 100%;
 }
 
@@ -342,13 +343,12 @@ input[type="file"] { display: none; }
 }
 
 .chain-display {
-  display: flex;
-  align-items: center;
+  width: 100%;
   padding: 4px 16px;
   font-size: 10px;
   color: #666;
   letter-spacing: 1px;
-  white-space: nowrap;
+  word-break: break-word;
 }
 </style>
 </head>
@@ -642,8 +642,8 @@ const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 // ══════════════════════════════════════════
 const W = 96;
 const IO_ROWS = 3;
-const BOARD_ROWS = 10;
-const OUT_ROWS = 4;
+const BOARD_ROWS = 8;
+const OUT_ROWS = 5;
 
 function pad(s)    { return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║'; }
 function center(s) { const l = Math.floor((W - s.length) / 2); return '║' + ' '.repeat(l) + s + ' '.repeat(Math.max(0, W - s.length - l)) + '║'; }
@@ -660,6 +660,7 @@ function render() {
   lines.push(pad(''));
   lines.push(hBar('═'));
   lines.push(pad('  INPUT / OUTPUT'));
+  lines.push(pad(''));
 
   // I/O blank rows
   const ioStart = lines.length;
@@ -674,21 +675,10 @@ function render() {
   const boardStart = lines.length;
   for (let i = 0; i < BOARD_ROWS; i++) lines.push(pad(''));
 
-  // Chain info
-  const names = [];
-  for (const id of pedalOrder) {
-    const p = pedals.find(x => x.id === id);
-    if (!p) continue;
-    names.push(p.enabled ? p.name : '(' + p.name + ')');
-  }
-  const chain = names.length
-    ? '  IN ═══╡ ' + names.join(' ╞═══╡ ') + ' ╞═══ OUT'
-    : '  IN ═══════════════════════════ OUT';
-  lines.push(pad(chain));
-
   // Output section
   lines.push(hBar('═'));
   lines.push(pad('  OUTPUT'));
+  lines.push(pad(''));
 
   const outStart = lines.length;
   for (let i = 0; i < OUT_ROWS; i++) lines.push(pad(''));
@@ -701,6 +691,12 @@ function render() {
   document.getElementById('display').textContent = lines.join('\n');
 
   // Update chain info text
+  const names = [];
+  for (const id of pedalOrder) {
+    const p = pedals.find(x => x.id === id);
+    if (!p) continue;
+    names.push(p.enabled ? p.name : '(' + p.name + ')');
+  }
   document.getElementById('chain-info').textContent = 'CHAIN: IN → ' +
     (names.length ? names.join(' → ') + ' → ' : '') + 'OUT';
 
