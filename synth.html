@@ -470,6 +470,13 @@ input[type="range"]::-webkit-slider-thumb {
             <option value="16">16</option>
           </select>
         </div>
+        <div class="param-row">
+          <span class="param-label">OUTPUT</span>
+          <select id="synth-output" class="crt-select" style="width:90px;" onchange="setSynthOutput()">
+            <option value="speakers">DEFAULT</option>
+            <option value="bus">BUS ONLY</option>
+          </select>
+        </div>
       </div>
 
       <div class="divider"></div>
@@ -830,6 +837,7 @@ function ensureAudio() {
 
   currentBankName = document.getElementById('osc-type').value;
   currentWavePos = parseInt(document.getElementById('wave-pos').value) / 1000;
+  enumerateOutputDevices();
 }
 
 function createVoice() {
@@ -1889,6 +1897,41 @@ function scaleCrt() {
   }
 }
 window.addEventListener('resize', scaleCrt);
+
+async function setSynthOutput() {
+  if (!audioCtx || !analyserNode) return;
+  const val = document.getElementById('synth-output').value;
+  if (val === 'bus') {
+    try { analyserNode.disconnect(audioCtx.destination); } catch(e) {}
+  } else {
+    analyserNode.connect(audioCtx.destination);
+    if (val && val !== 'speakers') {
+      try { if (audioCtx.setSinkId) await audioCtx.setSinkId(val); } catch(e) {}
+    } else {
+      try { if (audioCtx.setSinkId) await audioCtx.setSinkId(''); } catch(e) {}
+    }
+  }
+}
+
+async function enumerateOutputDevices() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const sel = document.getElementById('synth-output');
+    const current = sel.value;
+    const busOpt = sel.querySelector('option[value="bus"]');
+    sel.innerHTML = '<option value="speakers">DEFAULT</option>';
+    for (const d of devices) {
+      if (d.kind !== 'audiooutput') continue;
+      const opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label || ('Output ' + d.deviceId.slice(0, 8));
+      sel.appendChild(opt);
+    }
+    if (busOpt) sel.appendChild(busOpt.cloneNode(true));
+    else { const b = document.createElement('option'); b.value = 'bus'; b.textContent = 'BUS ONLY'; sel.appendChild(b); }
+    if (current) sel.value = current;
+  } catch(e) {}
+}
 
 // ══════════════════════════════════════════
 //  AUDIO BUS BROADCASTER
