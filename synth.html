@@ -1929,13 +1929,22 @@ async function setSynthOutput() {
 
 async function enumerateOutputDevices() {
   try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
+    let devices = await navigator.mediaDevices.enumerateDevices();
+    const hasLabels = devices.some(d => d.label);
+    if (!hasLabels) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t => t.stop());
+        devices = await navigator.mediaDevices.enumerateDevices();
+      } catch(e) {}
+    }
     const sel = document.getElementById('synth-output');
     const current = sel.value;
     const busOpt = sel.querySelector('option[value="bus"]');
     sel.innerHTML = '<option value="speakers">DEFAULT</option>';
     for (const d of devices) {
       if (d.kind !== 'audiooutput') continue;
+      if (d.deviceId === 'default' || d.deviceId === '') continue;
       const opt = document.createElement('option');
       opt.value = d.deviceId;
       opt.textContent = d.label || ('Output ' + d.deviceId.slice(0, 8));
