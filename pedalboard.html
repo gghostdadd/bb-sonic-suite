@@ -1,0 +1,2073 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BB PEDALBOARD</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0a0800;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: 20px 10px;
+  font-family: Menlo, Consolas, 'Courier New', monospace;
+}
+
+#crt {
+  position: relative;
+  background: #0c0a02;
+  border: 1px solid #333;
+  padding: 0;
+  width: min-content;
+}
+
+#crt::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.06) 2px,
+    rgba(0, 0, 0, 0.06) 4px
+  );
+  pointer-events: none;
+  z-index: 10;
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  93% { opacity: 0.92; }
+  94% { opacity: 1; }
+}
+#crt { animation: flicker 8s infinite; }
+
+/* ─── FRAME ─── */
+#display {
+  font-family: Menlo, Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #fff;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  white-space: pre;
+  user-select: none;
+}
+
+/* ─── CONTROL OVERLAY ─── */
+#controls {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ctrl-section {
+  padding: 4px 14px;
+}
+
+/* ─── I/O CONTROLS ─── */
+.io-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+}
+.io-break {
+  flex-basis: 100%;
+  height: 0;
+}
+.io-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #e0e0e0;
+}
+.io-label {
+  font-size: 10px;
+  color: #888;
+  width: 44px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.crt-select {
+  background: #0c0a02;
+  color: #e0e0e0;
+  border: 1px solid #444;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 2px 4px;
+  cursor: pointer;
+  text-shadow: 0 0 8px rgba(255,255,255,0.15);
+}
+.crt-select:hover { border-color: #888; }
+
+.btn {
+  background: transparent;
+  color: #e0e0e0;
+  border: 1px solid #555;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  letter-spacing: 1px;
+}
+.btn:hover { border-color: #fff; background: rgba(255,255,255,0.06); }
+.btn:active { background: rgba(255,255,255,0.1); }
+
+.io-val {
+  font-size: 10px;
+  color: #aaa;
+  width: 44px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 2px;
+  background: #444;
+  outline: none;
+  flex: 1;
+  min-width: 30px;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px; height: 14px;
+  background: #e0e0e0;
+  border: 1px solid #666;
+  cursor: pointer;
+}
+
+input[type="file"] { display: none; }
+
+/* ─── PEDALBOARD ─── */
+.board-strip {
+  display: flex;
+  align-items: stretch;
+  padding: 4px 0;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.board-strip::-webkit-scrollbar {
+  height: 4px;
+}
+.board-strip::-webkit-scrollbar-track {
+  background: #0c0a02;
+}
+.board-strip::-webkit-scrollbar-thumb {
+  background: #333;
+}
+
+.pedal {
+  flex-shrink: 0;
+  width: 170px;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.drag-handle {
+  cursor: grab;
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+.pedal.dragging { opacity: 0.3; }
+.pedal.drag-over-left .pedal-body { border-color: #e8c840; box-shadow: 0 0 10px rgba(232,200,64,0.3); }
+.pedal.drag-over-right .pedal-body { border-color: #e8c840; box-shadow: 0 0 10px rgba(232,200,64,0.3); }
+
+.pedal-body {
+  border: 1px solid #555;
+  padding: 6px 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.pedal-name {
+  text-align: center;
+  font-size: 14px;
+  color: #fff;
+  letter-spacing: 4px;
+  text-shadow: 0 0 10px rgba(255,255,255,0.4);
+  padding: 2px 0;
+}
+.pedal-subname {
+  text-align: center;
+  font-size: 8px;
+  color: #555;
+  letter-spacing: 2px;
+  margin-bottom: 6px;
+}
+
+.pedal-params { padding: 4px 0; flex: 1; }
+.pedal-param {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.pedal-param:last-child { margin-bottom: 0; }
+.p-label {
+  width: 40px;
+  font-size: 10px;
+  color: #888;
+  text-align: right;
+  flex-shrink: 0;
+}
+.p-val {
+  width: 30px;
+  font-size: 10px;
+  color: #aaa;
+  text-align: right;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.pedal-foot {
+  text-align: center;
+  padding: 4px 0 2px;
+}
+.pedal-foot .btn {
+  font-size: 10px;
+  padding: 3px 16px;
+  letter-spacing: 2px;
+}
+
+.pedal-led {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.pedal-led.on { color: #ff3333; text-shadow: 0 0 8px #ff3333aa; }
+.pedal-led.off { color: #331111; }
+
+.slot-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.slot-select {
+  flex: 1;
+  font-size: 10px;
+}
+.slot-remove {
+  cursor: pointer;
+  color: #666;
+  font-size: 11px;
+  padding: 0 2px;
+}
+.slot-remove:hover { color: #ff4444; }
+
+.add-slot {
+  width: 60px;
+  flex-shrink: 0;
+}
+.add-slot-inner {
+  border: 1px dashed #444;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #666;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+.add-slot-inner:hover { border-color: #888; color: #aaa; }
+
+.cable-ascii {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: #fff;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  white-space: pre;
+  user-select: none;
+  padding: 0 2px;
+}
+
+/* ─── OUTPUT SECTION ─── */
+.output-inner {
+  display: flex;
+  gap: 0;
+  width: 100%;
+}
+
+.scope-canvas {
+  width: 200px;
+  height: 50px;
+  border: 1px solid #333;
+  background: #0a0a0a;
+  display: block;
+  flex-shrink: 0;
+}
+
+.meter-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 4px 16px;
+}
+.meter-label {
+  font-size: 8px;
+  color: #555;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+.meter-bar-ascii {
+  font-size: 13px;
+  color: #fff;
+  white-space: pre;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  line-height: 1;
+}
+
+.chain-display {
+  display: flex;
+  align-items: center;
+  padding: 4px 16px;
+  font-size: 10px;
+  color: #666;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+</style>
+</head>
+<body>
+<div id="crt">
+  <pre id="display"></pre>
+  <div id="controls">
+
+    <!-- I/O Controls -->
+    <div class="ctrl-section">
+      <div class="io-row">
+        <div class="io-item">
+          <span class="io-label">INPUT</span>
+          <select class="crt-select" id="input-src" onchange="setInputSource()">
+            <option value="file">AUDIO FILE</option>
+            <option value="mic">MIC / LINE IN</option>
+            <option value="osc">TEST TONE</option>
+          </select>
+        </div>
+        <div class="io-item">
+          <span class="io-label">IN VOL</span>
+          <input type="range" id="input-vol" min="0" max="100" value="0" oninput="setInputVol()" ondblclick="this.value=0;setInputVol()">
+          <span class="io-val" id="input-vol-val">0%</span>
+        </div>
+        <div class="io-break" id="file-break"></div>
+        <div class="io-item" id="file-cell">
+          <span class="io-label"></span>
+          <button class="btn" onclick="document.getElementById('file-input').click()">LOAD</button>
+          <input type="file" id="file-input" accept="audio/*" onchange="loadAudioFile(event)">
+          <button class="btn" id="file-play-btn" onclick="toggleFilePlayback()" disabled>PLAY</button>
+          <button class="btn" id="file-stop-btn" onclick="stopFile()" disabled>STOP</button>
+          <span class="io-val" id="file-timecode">--:-- / --:--</span>
+          <button class="btn" id="file-loop-btn" onclick="toggleFileLoop()" disabled>LOOP:ON</button>
+        </div>
+        <div class="io-item" id="osc-cell" style="display:none;">
+          <span class="io-label">FREQ</span>
+          <input type="range" id="osc-freq" min="50" max="2000" value="440" oninput="setOscFreq()" ondblclick="this.value=440;setOscFreq()">
+          <span class="io-val" id="osc-freq-val">440Hz</span>
+        </div>
+        <div class="io-item" id="osc-cell2" style="display:none;">
+          <span class="io-label">WAVE</span>
+          <select class="crt-select" id="osc-wave" onchange="setOscWave()">
+            <option value="sine">SIN</option>
+            <option value="sawtooth">SAW</option>
+            <option value="square">SQR</option>
+            <option value="triangle">TRI</option>
+          </select>
+        </div>
+        <div class="io-break" id="device-break" style="display:none;"></div>
+        <div class="io-item" id="device-cell" style="display:none;">
+          <span class="io-label">INPUT DEVICE</span>
+          <select class="crt-select" id="input-device" onchange="setInputSource()" style="max-width:180px;">
+            <option value="none">── NONE ──</option>
+            <option value="">── DEFAULT ──</option>
+          </select>
+        </div>
+        <div class="io-item">
+          <span class="io-label">OUTPUT</span>
+          <select class="crt-select" id="output-device" onchange="setOutputDevice()" style="max-width:180px;">
+            <option value="none">── NONE ──</option>
+            <option value="">── DEFAULT ──</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Signal Chain -->
+    <div class="ctrl-section">
+      <div class="board-strip" id="board"></div>
+    </div>
+
+    <!-- Output -->
+    <div class="ctrl-section">
+      <div class="output-inner">
+        <canvas class="scope-canvas" id="scope-canvas"></canvas>
+        <div class="meter-wrap">
+          <div class="meter-label">LEVEL</div>
+          <pre class="meter-bar-ascii" id="meter-ascii">│░░░░░░░░░░░░░░░░░░░░│</pre>
+        </div>
+        <div class="chain-display" id="chain-info">CHAIN: ──</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════
+let actx = null;
+let inputNode = null;
+let inputGain = null;
+let outputGain = null;
+let analyser = null;
+let oscSource = null;
+let micStream = null;
+let fileSource = null;
+let fileBuffer = null;
+let fileIsPlaying = false;
+let fileLoop = true;
+let fileStartTime = 0;
+let filePauseOffset = 0;
+let fileTimecodeRAF = null;
+const pedals = [];
+let pedalOrder = [];
+let pedalIdCounter = 0;
+let dragPedalId = null;
+
+// ══════════════════════════════════════════
+//  AUDIO BUS (cross-tab audio routing)
+// ══════════════════════════════════════════
+const busSources = {};
+let busChannel = null;
+let busReceiverNode = null;
+let busActiveSrc = null;
+const BUS_BUFFER_SIZE = 8192;
+const BUS_HEADER_INTS = 4;
+const BUS_HEADER_BYTES = BUS_HEADER_INTS * 4;
+
+const busReceiverSABCode = `
+class BusReceiverSAB extends AudioWorkletProcessor {
+  constructor(options) {
+    super();
+    const { sab, bufferSize } = options.processorOptions;
+    this.indices = new Int32Array(sab, 0, 4);
+    this.samples = new Float32Array(sab, 16);
+    this.bufferSize = bufferSize;
+  }
+  process(inputs, outputs) {
+    const output = outputs[0][0];
+    if (!output) return true;
+    const writeIdx = Atomics.load(this.indices, 0);
+    const readIdx = Atomics.load(this.indices, 1);
+    let available = (writeIdx - readIdx + this.bufferSize) % this.bufferSize;
+    if (available >= output.length) {
+      for (let i = 0; i < output.length; i++) {
+        output[i] = this.samples[(readIdx + i) % this.bufferSize];
+      }
+      Atomics.store(this.indices, 1, (readIdx + output.length) % this.bufferSize);
+    }
+    return true;
+  }
+}
+registerProcessor('bus-receiver-sab', BusReceiverSAB);
+`;
+
+const busReceiverMPCode = `
+class BusReceiverMP extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.ring = new Float32Array(8192);
+    this.writeIdx = 0;
+    this.readIdx = 0;
+    this.bufferSize = 8192;
+    this.port.onmessage = (e) => {
+      const data = e.data;
+      for (let i = 0; i < data.length; i++) {
+        this.ring[(this.writeIdx + i) % this.bufferSize] = data[i];
+      }
+      this.writeIdx = (this.writeIdx + data.length) % this.bufferSize;
+    };
+  }
+  process(inputs, outputs) {
+    const output = outputs[0][0];
+    if (!output) return true;
+    let available = (this.writeIdx - this.readIdx + this.bufferSize) % this.bufferSize;
+    if (available >= output.length) {
+      for (let i = 0; i < output.length; i++) {
+        output[i] = this.ring[(this.readIdx + i) % this.bufferSize];
+      }
+      this.readIdx = (this.readIdx + output.length) % this.bufferSize;
+    }
+    return true;
+  }
+}
+registerProcessor('bus-receiver-mp', BusReceiverMP);
+`;
+
+let busWorkletReady = false;
+
+async function initBusWorklets() {
+  if (busWorkletReady || !actx) return;
+  const useSAB = typeof SharedArrayBuffer !== 'undefined' && crossOriginIsolated;
+  const code = useSAB ? busReceiverSABCode : busReceiverMPCode;
+  const blob = new Blob([code], { type: 'application/javascript' });
+  const url = URL.createObjectURL(blob);
+  await actx.audioWorklet.addModule(url);
+  URL.revokeObjectURL(url);
+  busWorkletReady = true;
+}
+
+function initBusDiscovery() {
+  if (busChannel) return;
+  busChannel = new BroadcastChannel('bb-audio-bus');
+  busChannel.onmessage = (e) => {
+    const msg = e.data;
+    if (msg.type === 'announce' || msg.type === 'heartbeat') {
+      const isNew = !busSources[msg.id];
+      busSources[msg.id] = { id: msg.id, name: msg.name, ts: Date.now(), sab: msg.sab || null };
+      if (isNew) updateBusOptions();
+    } else if (msg.type === 'leave') {
+      delete busSources[msg.id];
+      updateBusOptions();
+      if (busActiveSrc === msg.id) disconnectBus();
+    } else if (msg.type === 'audio' && msg.id === busActiveSrc) {
+      if (busReceiverNode && busReceiverNode.port) {
+        busReceiverNode.port.postMessage(msg.samples);
+      }
+    }
+  };
+  busChannel.postMessage({ type: 'discover' });
+  setInterval(() => {
+    const now = Date.now();
+    let changed = false;
+    for (const id in busSources) {
+      if (now - busSources[id].ts > 6000) {
+        delete busSources[id];
+        changed = true;
+        if (busActiveSrc === id) disconnectBus();
+      }
+    }
+    if (changed) updateBusOptions();
+  }, 3000);
+}
+
+function updateBusOptions() {
+  const sel = document.getElementById('input-src');
+  sel.querySelectorAll('option[data-bus]').forEach(o => o.remove());
+  for (const id in busSources) {
+    const opt = document.createElement('option');
+    opt.value = 'bus:' + id;
+    opt.textContent = busSources[id].name;
+    opt.setAttribute('data-bus', 'true');
+    sel.appendChild(opt);
+  }
+}
+
+async function connectBus(sourceId) {
+  disconnectBus();
+  const src = busSources[sourceId];
+  if (!src) return;
+  await initBusWorklets();
+  const useSAB = src.sab && typeof SharedArrayBuffer !== 'undefined' && crossOriginIsolated;
+  if (useSAB) {
+    busReceiverNode = new AudioWorkletNode(actx, 'bus-receiver-sab', {
+      processorOptions: { sab: src.sab, bufferSize: BUS_BUFFER_SIZE },
+      outputChannelCount: [1]
+    });
+  } else {
+    busReceiverNode = new AudioWorkletNode(actx, 'bus-receiver-mp', {
+      outputChannelCount: [1]
+    });
+    busChannel.postMessage({ type: 'subscribe', subscriberId: 'pedalboard', sourceId: sourceId });
+  }
+  busActiveSrc = sourceId;
+  inputNode = busReceiverNode;
+  rebuildChain();
+}
+
+function disconnectBus() {
+  if (busReceiverNode) {
+    try { busReceiverNode.disconnect(); } catch(e) {}
+    busReceiverNode = null;
+  }
+  if (busActiveSrc) {
+    if (busChannel) busChannel.postMessage({ type: 'unsubscribe', sourceId: busActiveSrc });
+    busActiveSrc = null;
+  }
+  inputNode = null;
+}
+
+initBusDiscovery();
+
+const PEDAL_TYPES = {
+  sd1:  { name: 'SD-1',  fullName: 'SUPER OVERDRIVE', create: () => createSD1() },
+  tr2:  { name: 'TR-2',  fullName: 'TREMOLO',         create: () => createTR2() },
+  vb2:  { name: 'VB-2',  fullName: 'VIBRATO',         create: () => createVB2() },
+  ce2:  { name: 'CE-2',  fullName: 'CHORUS',          create: () => createCE2() },
+  ph1:  { name: 'PH-1',  fullName: 'PHASER',          create: () => createPH1() },
+  bf2:  { name: 'BF-2',  fullName: 'FLANGER',         create: () => createBF2() },
+  dd3:  { name: 'DD-3',  fullName: 'DIGITAL DELAY',   create: () => createDD3() },
+  rv2:  { name: 'RV-2',  fullName: 'DIGITAL REVERB',  create: () => createRV2() }
+};
+const KEY_MAP = { a:0, w:1, s:2, e:3, d:4, f:5, t:6, g:7, y:8, h:9, u:10, j:11, k:12 };
+let keyOctave = 4;
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+// ══════════════════════════════════════════
+//  ASCII FRAME
+// ══════════════════════════════════════════
+const W = 96;
+const IO_ROWS = 3;
+const BOARD_ROWS = 10;
+const OUT_ROWS = 4;
+
+function pad(s)    { return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║'; }
+function center(s) { const l = Math.floor((W - s.length) / 2); return '║' + ' '.repeat(l) + s + ' '.repeat(Math.max(0, W - s.length - l)) + '║'; }
+function hBar(ch)  { return '╠' + ch.repeat(W) + '╣'; }
+
+function render() {
+  const lines = [];
+
+  // Header
+  lines.push('╔' + '═'.repeat(W) + '╗');
+  lines.push(pad(''));
+  lines.push(center('B B   P E D A L B O A R D'));
+  lines.push(center('MULTI-FX CHAIN v1.0'));
+  lines.push(pad(''));
+  lines.push(hBar('═'));
+  lines.push(pad('  INPUT / OUTPUT'));
+
+  // I/O blank rows
+  const ioStart = lines.length;
+  for (let i = 0; i < IO_ROWS; i++) lines.push(pad(''));
+
+  // Signal Chain section
+  lines.push(hBar('─'));
+  lines.push(pad('  SIGNAL CHAIN'));
+  lines.push(pad(''));
+
+  // Board blank rows
+  const boardStart = lines.length;
+  for (let i = 0; i < BOARD_ROWS; i++) lines.push(pad(''));
+
+  // Chain info
+  const names = [];
+  for (const id of pedalOrder) {
+    const p = pedals.find(x => x.id === id);
+    if (!p) continue;
+    names.push(p.enabled ? p.name : '(' + p.name + ')');
+  }
+  const chain = names.length
+    ? '  IN ═══╡ ' + names.join(' ╞═══╡ ') + ' ╞═══ OUT'
+    : '  IN ═══════════════════════════ OUT';
+  lines.push(pad(chain));
+
+  // Output section
+  lines.push(hBar('═'));
+  lines.push(pad('  OUTPUT'));
+
+  const outStart = lines.length;
+  for (let i = 0; i < OUT_ROWS; i++) lines.push(pad(''));
+
+  // Footer
+  lines.push(hBar('─'));
+  lines.push(pad('  KEYS: A─K = NOTES │ Z/X = OCT │ DRAG PEDALS TO REORDER'));
+  lines.push('╚' + '═'.repeat(W) + '╝');
+
+  document.getElementById('display').textContent = lines.join('\n');
+
+  // Update chain info text
+  document.getElementById('chain-info').textContent = 'CHAIN: IN → ' +
+    (names.length ? names.join(' → ') + ' → ' : '') + 'OUT';
+
+  // Position control overlay
+  const displayEl = document.getElementById('display');
+  const crtEl = document.getElementById('crt');
+  const lineH = displayEl.scrollHeight / lines.length;
+  const crtRect = crtEl.getBoundingClientRect();
+  const displayRect = displayEl.getBoundingClientRect();
+
+  // Measure character positions from the first line
+  const textNode = displayEl.firstChild;
+  if (!textNode) return;
+  const range = document.createRange();
+  range.setStart(textNode, 1);
+  range.setEnd(textNode, 2);
+  const leftCharRect = range.getBoundingClientRect();
+  const firstNewline = displayEl.textContent.indexOf('\n');
+  range.setStart(textNode, firstNewline - 1);
+  range.setEnd(textNode, firstNewline);
+  const rightCharRect = range.getBoundingClientRect();
+
+  const ctrl = document.getElementById('controls');
+  const padLeft = leftCharRect.right - crtRect.left;
+  const padRight = crtRect.right - rightCharRect.left;
+
+  ctrl.style.left = padLeft + 'px';
+  ctrl.style.right = padRight + 'px';
+
+  // Position each section
+  const sections = ctrl.querySelectorAll('.ctrl-section');
+  sections[0].style.position = 'absolute';
+  sections[0].style.top = (ioStart * lineH) + 'px';
+  sections[0].style.left = '0';
+  sections[0].style.right = '0';
+  sections[0].style.height = (IO_ROWS * lineH) + 'px';
+
+  sections[1].style.position = 'absolute';
+  sections[1].style.top = (boardStart * lineH) + 'px';
+  sections[1].style.left = '0';
+  sections[1].style.right = '0';
+  sections[1].style.height = (BOARD_ROWS * lineH) + 'px';
+
+  sections[2].style.position = 'absolute';
+  sections[2].style.top = (outStart * lineH) + 'px';
+  sections[2].style.left = '0';
+  sections[2].style.right = '0';
+  sections[2].style.height = (OUT_ROWS * lineH) + 'px';
+
+  ctrl.style.top = '0';
+  ctrl.style.bottom = '0';
+}
+
+render();
+
+// ══════════════════════════════════════════
+//  AUDIO ENGINE
+// ══════════════════════════════════════════
+function ensureAudio() {
+  if (actx) return;
+  actx = new AudioContext();
+  inputGain = actx.createGain();
+  inputGain.gain.value = 0;
+  outputGain = actx.createGain();
+  outputGain.gain.value = 0.7;
+  analyser = actx.createAnalyser();
+  analyser.fftSize = 2048;
+  outputGain.connect(analyser);
+  analyser.connect(actx.destination);
+  enumerateDevices();
+  drawScope();
+  drawMeter();
+}
+
+async function enumerateDevices() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const inputSel = document.getElementById('input-device');
+    const outputSel = document.getElementById('output-device');
+    const currentInput = inputSel.value;
+    const currentOutput = outputSel.value;
+    inputSel.innerHTML = '<option value="none">── NONE ──</option><option value="">── DEFAULT ──</option>';
+    outputSel.innerHTML = '<option value="none">── NONE ──</option><option value="">── DEFAULT ──</option>';
+    for (const d of devices) {
+      const opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label || (d.kind + ' ' + d.deviceId.slice(0, 8));
+      if (d.kind === 'audioinput') inputSel.appendChild(opt);
+      else if (d.kind === 'audiooutput') outputSel.appendChild(opt);
+    }
+    if (currentInput) inputSel.value = currentInput;
+    if (currentOutput) outputSel.value = currentOutput;
+  } catch (e) {}
+}
+
+async function setOutputDevice() {
+  if (!actx) return;
+  const deviceId = document.getElementById('output-device').value;
+  if (deviceId === 'none') {
+    try { analyser.disconnect(); } catch(e){}
+    return;
+  }
+  try {
+    analyser.connect(actx.destination);
+    if (actx.setSinkId) await actx.setSinkId(deviceId || '');
+  } catch (e) { console.warn('Could not set output device:', e); }
+}
+
+function setInputVol() {
+  const v = parseInt(document.getElementById('input-vol').value);
+  document.getElementById('input-vol-val').textContent = v + '%';
+  if (inputGain) inputGain.gain.value = v / 100;
+}
+
+function setInputSource() {
+  ensureAudio();
+  const src = document.getElementById('input-src').value;
+  const deviceId = document.getElementById('input-device').value;
+  document.getElementById('device-break').style.display = src === 'mic' ? '' : 'none';
+  document.getElementById('device-cell').style.display = src === 'mic' ? '' : 'none';
+  document.getElementById('file-break').style.display = src === 'file' ? '' : 'none';
+  document.getElementById('file-cell').style.display = src === 'file' ? '' : 'none';
+  document.getElementById('osc-cell').style.display = src === 'osc' ? '' : 'none';
+  document.getElementById('osc-cell2').style.display = src === 'osc' ? '' : 'none';
+
+  if (oscSource) { oscSource.stop(); oscSource = null; }
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  if (fileIsPlaying) { stopFile(); }
+  if (fileSource) { try { fileSource.stop(); } catch(e){} fileSource = null; }
+  disconnectBus();
+  if (inputNode) { try { inputNode.disconnect(); } catch(e){} inputNode = null; }
+
+  if (src.startsWith('bus:')) {
+    const sourceId = src.slice(4);
+    connectBus(sourceId);
+  } else if (src === 'mic') {
+    if (deviceId === 'none') return;
+    const constraints = { audio: deviceId ? { deviceId: { exact: deviceId } } : true };
+    navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+      micStream = stream;
+      inputNode = actx.createMediaStreamSource(stream);
+      rebuildChain();
+      enumerateDevices();
+    });
+  } else if (src === 'osc') {
+    oscSource = actx.createOscillator();
+    oscSource.frequency.value = parseInt(document.getElementById('osc-freq').value);
+    oscSource.type = document.getElementById('osc-wave').value;
+    const oscGain = actx.createGain();
+    oscGain.gain.value = 0.3;
+    oscSource.connect(oscGain);
+    oscSource.start();
+    inputNode = oscGain;
+    rebuildChain();
+  }
+}
+
+function setOscFreq() {
+  const f = parseInt(document.getElementById('osc-freq').value);
+  document.getElementById('osc-freq-val').textContent = f + 'Hz';
+  if (oscSource) oscSource.frequency.value = f;
+}
+
+function setOscWave() {
+  if (oscSource) oscSource.type = document.getElementById('osc-wave').value;
+}
+
+function loadAudioFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  ensureAudio();
+  stopFile();
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    actx.decodeAudioData(ev.target.result, buf => {
+      fileBuffer = buf;
+      filePauseOffset = 0;
+      document.getElementById('file-play-btn').disabled = false;
+      document.getElementById('file-stop-btn').disabled = false;
+      document.getElementById('file-loop-btn').disabled = false;
+      updateFileTimecode();
+      startFilePlayback();
+    });
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function startFilePlayback() {
+  if (!fileBuffer || fileIsPlaying) return;
+  if (fileSource) { try { fileSource.stop(); } catch(e){} }
+  fileSource = actx.createBufferSource();
+  fileSource.buffer = fileBuffer;
+  fileSource.loop = fileLoop;
+  fileSource.onended = function() {
+    if (fileIsPlaying && !fileLoop) {
+      fileIsPlaying = false;
+      filePauseOffset = 0;
+      document.getElementById('file-play-btn').textContent = 'PLAY';
+      updateFileTimecode();
+      cancelAnimationFrame(fileTimecodeRAF);
+    }
+  };
+  fileSource.start(0, filePauseOffset);
+  fileStartTime = actx.currentTime - filePauseOffset;
+  fileIsPlaying = true;
+  inputNode = fileSource;
+  rebuildChain();
+  document.getElementById('file-play-btn').textContent = 'PAUSE';
+  tickTimecode();
+}
+
+function toggleFilePlayback() {
+  if (!fileBuffer) return;
+  if (fileIsPlaying) {
+    filePauseOffset = (actx.currentTime - fileStartTime) % fileBuffer.duration;
+    fileSource.stop();
+    fileSource = null;
+    fileIsPlaying = false;
+    inputNode = null;
+    document.getElementById('file-play-btn').textContent = 'PLAY';
+    cancelAnimationFrame(fileTimecodeRAF);
+  } else {
+    startFilePlayback();
+  }
+}
+
+function stopFile() {
+  if (fileSource) { try { fileSource.stop(); } catch(e){} fileSource = null; }
+  fileIsPlaying = false;
+  filePauseOffset = 0;
+  inputNode = null;
+  cancelAnimationFrame(fileTimecodeRAF);
+  document.getElementById('file-play-btn').textContent = 'PLAY';
+  updateFileTimecode();
+}
+
+function toggleFileLoop() {
+  fileLoop = !fileLoop;
+  document.getElementById('file-loop-btn').textContent = fileLoop ? 'LOOP:ON' : 'LOOP:OFF';
+  if (fileSource) fileSource.loop = fileLoop;
+}
+
+function formatTime(s) {
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+}
+
+function updateFileTimecode() {
+  const el = document.getElementById('file-timecode');
+  if (!fileBuffer) { el.textContent = '--:-- / --:--'; return; }
+  const dur = fileBuffer.duration;
+  let pos = 0;
+  if (fileIsPlaying) {
+    pos = (actx.currentTime - fileStartTime) % dur;
+  } else {
+    pos = filePauseOffset;
+  }
+  el.textContent = formatTime(pos) + ' / ' + formatTime(dur);
+}
+
+function tickTimecode() {
+  if (!fileIsPlaying) return;
+  updateFileTimecode();
+  fileTimecodeRAF = requestAnimationFrame(tickTimecode);
+}
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (e.repeat) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z') { keyOctave = Math.max(1, keyOctave - 1); return; }
+  if (k === 'x') { keyOctave = Math.min(7, keyOctave + 1); return; }
+  if (KEY_MAP[k] !== undefined && oscSource) {
+    const midi = (keyOctave + 1) * 12 + KEY_MAP[k];
+    oscSource.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
+    document.getElementById('osc-freq-val').textContent = midiToName(midi);
+  }
+});
+
+function midiToName(m) { return NOTE_NAMES[m % 12] + Math.floor(m / 12 - 1); }
+
+// ══════════════════════════════════════════
+//  CHAIN ROUTING
+// ══════════════════════════════════════════
+function rebuildChain() {
+  if (!inputNode) return;
+  inputNode.disconnect();
+  inputGain.disconnect();
+  pedals.forEach(p => { if (p.output) p.output.disconnect(); });
+
+  inputNode.connect(inputGain);
+  let current = inputGain;
+
+  for (const id of pedalOrder) {
+    const p = pedals.find(x => x.id === id);
+    if (!p || !p.enabled) continue;
+    current.connect(p.input);
+    current = p.output;
+  }
+
+  current.connect(outputGain);
+  render();
+}
+
+// ══════════════════════════════════════════
+//  PEDAL REGISTRY
+// ══════════════════════════════════════════
+function createSD1() {
+  ensureAudio();
+  const id = 'pedal_' + (pedalIdCounter++);
+
+  const preGain = actx.createGain();
+  preGain.gain.value = 5;
+
+  const shaper = actx.createWaveShaper();
+  shaper.oversample = '4x';
+
+  function makeSD1Curve(drive) {
+    const n = 8192;
+    const curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = (i * 2 / n) - 1;
+      if (x >= 0) {
+        curve[i] = Math.tanh(x * drive * 0.8) * 0.9;
+      } else {
+        curve[i] = Math.tanh(x * drive * 1.5) * 0.75;
+      }
+    }
+    return curve;
+  }
+  shaper.curve = makeSD1Curve(3);
+
+  const postGain = actx.createGain();
+  postGain.gain.value = 0.5;
+
+  const tone = actx.createBiquadFilter();
+  tone.type = 'lowpass';
+  tone.frequency.value = 3000;
+  tone.Q.value = 0.7;
+
+  const level = actx.createGain();
+  level.gain.value = 0.7;
+
+  preGain.connect(shaper);
+  shaper.connect(postGain);
+  postGain.connect(tone);
+  tone.connect(level);
+
+  const pedal = {
+    id,
+    type: 'sd1',
+    name: 'SD-1',
+    fullName: 'SUPER OVERDRIVE',
+    enabled: false,
+    input: preGain,
+    output: level,
+    nodes: { preGain, shaper, postGain, tone, level },
+    params: { drive: 50, tone: 50, level: 70 },
+    defaultParams: { drive: 50, tone: 50, level: 70 },
+    knobDefs: [
+      { param: 'drive', label: 'DRIVE' },
+      { param: 'tone', label: 'TONE' },
+      { param: 'level', label: 'LEVEL' }
+    ],
+    makeSD1Curve,
+    updateDrive(val) {
+      this.params.drive = val;
+      const d = 1 + (val / 100) * 15;
+      preGain.gain.value = d;
+      shaper.curve = makeSD1Curve(d * 0.3);
+    },
+    updateTone(val) {
+      this.params.tone = val;
+      tone.frequency.value = 800 + (val / 100) * 7200;
+    },
+    updateLevel(val) {
+      this.params.level = val;
+      level.gain.value = val / 100;
+    },
+    toggle() {
+      this.enabled = !this.enabled;
+      rebuildChain();
+      renderBoard();
+    }
+  };
+
+  return pedal;
+}
+
+function createTR2() {
+  ensureAudio();
+  const id = 'pedal_' + (pedalIdCounter++);
+
+  const input = actx.createGain();
+  input.gain.value = 1;
+
+  const vca = actx.createGain();
+  vca.gain.value = 1;
+
+  input.connect(vca);
+
+  const lfo = actx.createOscillator();
+  lfo.type = 'triangle';
+  lfo.frequency.value = 4;
+
+  function makeWaveCurve(wave) {
+    const n = 256;
+    const curve = new Float32Array(n);
+    const steepness = 1 + (wave / 100) * 50;
+    for (let i = 0; i < n; i++) {
+      const x = (i * 2 / n) - 1;
+      curve[i] = Math.tanh(x * steepness) / Math.tanh(steepness);
+    }
+    return curve;
+  }
+
+  const waveShaper = actx.createWaveShaper();
+  waveShaper.curve = makeWaveCurve(0);
+
+  const lfoDepth = actx.createGain();
+  lfoDepth.gain.value = 0.5;
+
+  const lfoOffset = actx.createConstantSource();
+  lfoOffset.offset.value = 1;
+  lfoOffset.start();
+
+  lfo.connect(waveShaper);
+  waveShaper.connect(lfoDepth);
+  lfoDepth.connect(vca.gain);
+  lfoOffset.connect(vca.gain);
+
+  lfo.start();
+
+  const pedal = {
+    id,
+    type: 'tr2',
+    name: 'TR-2',
+    fullName: 'TREMOLO',
+    enabled: false,
+    input: input,
+    output: vca,
+    nodes: { input, vca, lfo, waveShaper, lfoDepth, lfoOffset },
+    params: { rate: 40, wave: 0, depth: 50 },
+    defaultParams: { rate: 40, wave: 0, depth: 50 },
+    knobDefs: [
+      { param: 'rate', label: 'RATE' },
+      { param: 'wave', label: 'WAVE' },
+      { param: 'depth', label: 'DEPTH' }
+    ],
+    makeWaveCurve,
+    updateRate(val) {
+      this.params.rate = val;
+      lfo.frequency.value = 0.5 + (val / 100) * 9.5;
+    },
+    updateWave(val) {
+      this.params.wave = val;
+      waveShaper.curve = makeWaveCurve(val);
+    },
+    updateDepth(val) {
+      this.params.depth = val;
+      const d = val / 100;
+      lfoDepth.gain.value = -d;
+      lfoOffset.offset.value = 1;
+    },
+    toggle() {
+      this.enabled = !this.enabled;
+      rebuildChain();
+      renderBoard();
+    }
+  };
+
+  pedal.updateRate(40);
+  pedal.updateDepth(50);
+
+  return pedal;
+}
+
+function createVB2() {
+  ensureAudio();
+  const id = 'pedal_' + (pedalIdCounter++);
+
+  // BBD-style delay vibrato: sine LFO modulates a short delay line
+  const input = actx.createGain();
+  input.gain.value = 1;
+
+  const delay = actx.createDelay(0.05);
+  delay.delayTime.value = 0.005;
+
+  input.connect(delay);
+
+  // Sine LFO — matches the VB-2's filtered sine output
+  const lfo = actx.createOscillator();
+  lfo.type = 'sine';
+  lfo.frequency.value = 5;
+
+  // LFO depth controls delay time modulation amplitude
+  const lfoDepth = actx.createGain();
+  lfoDepth.gain.value = 0.003;
+
+  lfo.connect(lfoDepth);
+  lfoDepth.connect(delay.delayTime);
+  lfo.start();
+
+  // Rise envelope — ramps LFO depth up smoothly when enabled
+  let riseTime = 0.5;
+
+  const pedal = {
+    id,
+    type: 'vb2',
+    name: 'VB-2',
+    fullName: 'VIBRATO',
+    enabled: false,
+    input: input,
+    output: delay,
+    nodes: { input, delay, lfo, lfoDepth },
+    params: { rate: 40, depth: 50, rise: 30 },
+    defaultParams: { rate: 40, depth: 50, rise: 30 },
+    knobDefs: [
+      { param: 'rate', label: 'RATE' },
+      { param: 'depth', label: 'DEPTH' },
+      { param: 'rise', label: 'RISE' }
+    ],
+    updateRate(val) {
+      this.params.rate = val;
+      lfo.frequency.value = 2 + (val / 100) * 9;
+    },
+    updateDepth(val) {
+      this.params.depth = val;
+      const d = (val / 100) * 0.006;
+      lfoDepth.gain.setTargetAtTime(d, actx.currentTime, 0.01);
+    },
+    updateRise(val) {
+      this.params.rise = val;
+      riseTime = 0.05 + (val / 100) * 2.95;
+    },
+    toggle() {
+      this.enabled = !this.enabled;
+      if (this.enabled) {
+        lfoDepth.gain.value = 0;
+        const targetDepth = (this.params.depth / 100) * 0.006;
+        lfoDepth.gain.setTargetAtTime(targetDepth, actx.currentTime, riseTime / 3);
+      }
+      rebuildChain();
+      renderBoard();
+    }
+  };
+
+  pedal.updateRate(40);
+  pedal.updateDepth(50);
+  pedal.updateRise(30);
+
+  return pedal;
+}
+
+function createCE2() {
+  ensureAudio();
+  const id = 'pedal_' + (pedalIdCounter++);
+
+  // CE-2: dry + BBD-modulated wet mix
+  const input = actx.createGain();
+  input.gain.value = 1;
+
+  const output = actx.createGain();
+  output.gain.value = 1;
+
+  // Dry path
+  const dry = actx.createGain();
+  dry.gain.value = 0.7;
+  input.connect(dry);
+  dry.connect(output);
+
+  // Wet path: delay + LPF (simulates MN3007 BBD rolloff)
+  const delay = actx.createDelay(0.05);
+  delay.delayTime.value = 0.007;
+
+  const bbd_lpf = actx.createBiquadFilter();
+  bbd_lpf.type = 'lowpass';
+  bbd_lpf.frequency.value = 4500;
+  bbd_lpf.Q.value = 0.5;
+
+  const wet = actx.createGain();
+  wet.gain.value = 0.7;
+
+  input.connect(delay);
+  delay.connect(bbd_lpf);
+  bbd_lpf.connect(wet);
+  wet.connect(output);
+
+  // Triangle LFO — matches the CE-2's triangle oscillator
+  const lfo = actx.createOscillator();
+  lfo.type = 'triangle';
+  lfo.frequency.value = 3;
+
+  const lfoDepth = actx.createGain();
+  lfoDepth.gain.value = 0.002;
+
+  lfo.connect(lfoDepth);
+  lfoDepth.connect(delay.delayTime);
+  lfo.start();
+
+  const pedal = {
+    id,
+    type: 'ce2',
+    name: 'CE-2',
+    fullName: 'CHORUS',
+    enabled: false,
+    input: input,
+    output: output,
+    nodes: { input, output, dry, delay, bbd_lpf, wet, lfo, lfoDepth },
+    params: { rate: 40, depth: 50 },
+    defaultParams: { rate: 40, depth: 50 },
+    knobDefs: [
+      { param: 'rate', label: 'RATE' },
+      { param: 'depth', label: 'DEPTH' }
+    ],
+    updateRate(val) {
+      this.params.rate = val;
+      lfo.frequency.value = 0.5 + (val / 100) * 7.5;
+    },
+    updateDepth(val) {
+      this.params.depth = val;
+      lfoDepth.gain.value = (val / 100) * 0.005;
+    },
+    toggle() {
+      this.enabled = !this.enabled;
+      rebuildChain();
+      renderBoard();
+    }
+  };
+
+  pedal.updateRate(40);
+  pedal.updateDepth(50);
+
+  return pedal;
+}
+
+function createPH1() {
+  ensureAudio();
+  const id = 'pedal_' + (pedalIdCounter++);
+
+  const input = actx.createGain();
+  input.gain.value = 1;
+  const output = actx.createGain();
+  output.gain.value = 1;
+
+  // Dry path
+  const dry = actx.createGain();
+  dry.gain.value = 0.5;
+  input.connect(dry);
+  dry.connect(output);
+
+  // Wet path: 4 cascaded allpass stages (2 notches)
+  const stages = [];
+  for (let i = 0; i < 4; i++) {
+    const ap = actx.createBiquadFilter();
+    ap.type = 'allpass';
+    ap.frequency.value = 1000;
+    ap.Q.value = 0.5;
+    stages.push(ap);
+  }
+  input.connect(stages[0]);
+  stages[0].connect(stages[1]);
+  stages[1].connect(stages[2]);
+  stages[2].connect(stages[3]);
+
+  const wet = actx.createGain();
+  wet.gain.value = 0.5;
+  stages[3].connect(wet);
+  wet.connect(output);
+
+  // Feedback path (resonance) — PH-1r style
+  const feedback = actx.createGain();
+  feedback.gain.value = 0;
+  stages[3].connect(feedback);
+  feedback.connect(stages[0]);
+
+  // Triangle LFO sweeps all allpass frequencies together
+  const lfo = actx.createOscillator();
+  lfo.type = 'triangle';
+  lfo.frequency.value = 2;
+
+  // LFO modulates allpass frequencies via gain nodes
+  // Base frequency ~1kHz, sweep ±depth around it on log scale
+  const lfoGains = stages.map(() => {
+    const g = actx.createGain();
+    g.gain.value = 800;
+    lfo.connect(g);
+    g.connect(stages[stages.indexOf(stages[0])].frequency);
+    return g;
+  });
+  // Reconnect properly — each gain drives its own stage
+  lfoGains.forEach((g, i) => {
+    g.disconnect();
+    lfo.connect(g);
+    g.connect(stages[i].frequency);
+  });
+
+  lfo.start();
+
+  const pedal = {
+    id,
+    type: 'ph1',
+    name: 'PH-1',
+    fullName: 'PHASER',
+    enabled: false,
+    input: input,
+    output: output,
+    nodes: { input, output, dry, wet, stages, feedback, lfo, lfoGains },
+    params: { rate: 30, depth: 60, res: 30 },
+    defaultParams: { rate: 30, depth: 60, res: 30 },
+    knobDefs: [
+      { param: 'rate', label: 'RATE' },
+      { param: 'depth', label: 'DEPTH' },
+      { param: 'res', label: 'RES' }
+    ],
+    updateRate(val) {
+      this.params.rate = val;
+      lfo.frequency.value = 0.06 + (val / 100) * 9.94;
+    },
+    updateDepth(val) {
+      this.params.depth = val;
+      const sweep = 200 + (val / 100) * 3000;
+      lfoGains.forEach(g => g.gain.value = sweep);
+    },
+    updateRes(val) {
+      this.params.res = val;
+      feedback.gain.value = (val / 100) * 0.85;
+    },
+    toggle() {
+      this.enabled = !this.enabled;
+      rebuildChain();
+      renderBoard();
+    }
+  };
+
+  pedal.updateRate(30);
+  pedal.updateDepth(60);
+  pedal.updateRes(30);
+
+  return pedal;
+}
+
+function createBF2() {
+  ensureAudio();
+  const id = 'pedal_' + (pedalIdCounter++);
+
+  const input = actx.createGain();
+  input.gain.value = 1;
+  const output = actx.createGain();
+  output.gain.value = 1;
+
+  // Dry path
+  const dry = actx.createGain();
+  dry.gain.value = 0.5;
+  input.connect(dry);
+  dry.connect(output);
+
+  // Wet path: short delay + LPF (BBD rolloff)
+  const delay = actx.createDelay(0.05);
+  delay.delayTime.value = 0.005;
+
+  const bbd_lpf = actx.createBiquadFilter();
+  bbd_lpf.type = 'lowpass';
+  bbd_lpf.frequency.value = 5000;
+  bbd_lpf.Q.value = 0.5;
+
+  const wet = actx.createGain();
+  wet.gain.value = 0.5;
+
+  input.connect(delay);
+  delay.connect(bbd_lpf);
+  bbd_lpf.connect(wet);
+  wet.connect(output);
+
+  // Resonance feedback loop
+  const feedback = actx.createGain();
+  feedback.gain.value = 0;
+  bbd_lpf.connect(feedback);
+  feedback.connect(delay);
+
+  // Triangle LFO
+  const lfo = actx.createOscillator();
+  lfo.type = 'triangle';
+  lfo.frequency.value = 0.5;
+
+  const lfoDepth = actx.createGain();
+  lfoDepth.gain.value = 0.002;
+
+  lfo.connect(lfoDepth);
+  lfoDepth.connect(delay.delayTime);
+  lfo.start();
+
+  const pedal = {
+    id,
+    type: 'bf2',
+    name: 'BF-2',
+    fullName: 'FLANGER',
+    enabled: false,
+    input: input,
+    output: output,
+    nodes: { input, output, dry, delay, bbd_lpf, wet, feedback, lfo, lfoDepth },
+    params: { manual: 35, depth: 50, rate: 30, res: 40 },
+    defaultParams: { manual: 35, depth: 50, rate: 30, res: 40 },
+    knobDefs: [
+      { param: 'manual', label: 'MANUAL' },
+      { param: 'depth', label: 'DEPTH' },
+      { param: 'rate', label: 'RATE' },
+      { param: 'res', label: 'RES' }
+    ],
+    updateManual(val) {
+      this.params.manual = val;
+      delay.delayTime.value = 0.001 + (val / 100) * 0.012;
+    },
+    updateDepth(val) {
+      this.params.depth = val;
+      lfoDepth.gain.value = (val / 100) * 0.005;
+    },
+    updateRate(val) {
+      this.params.rate = val;
+      lfo.frequency.value = 0.06 + (val / 100) * 9.94;
+    },
+    updateRes(val) {
+      this.params.res = val;
+      feedback.gain.value = (val / 100) * 0.9;
+    },
+    toggle() {
+      this.enabled = !this.enabled;
+      rebuildChain();
+      renderBoard();
+    }
+  };
+
+  pedal.updateManual(35);
+  pedal.updateDepth(50);
+  pedal.updateRate(30);
+  pedal.updateRes(40);
+
+  return pedal;
+}
+
+function createDD3() {
+  ensureAudio();
+  const id = 'pedal_' + (pedalIdCounter++);
+
+  const input = actx.createGain();
+  input.gain.value = 1;
+  const output = actx.createGain();
+  output.gain.value = 1;
+
+  // Dry path
+  const dry = actx.createGain();
+  dry.gain.value = 1;
+  input.connect(dry);
+  dry.connect(output);
+
+  // Wet path: clean digital delay
+  const delay = actx.createDelay(1.0);
+  delay.delayTime.value = 0.3;
+
+  const wet = actx.createGain();
+  wet.gain.value = 0.5;
+
+  input.connect(delay);
+  delay.connect(wet);
+  wet.connect(output);
+
+  // Feedback loop
+  const feedback = actx.createGain();
+  feedback.gain.value = 0.4;
+  delay.connect(feedback);
+  feedback.connect(delay);
+
+  // Mode ranges: 0=50ms, 1=200ms, 2=800ms, 3=hold
+  let mode = 2;
+  const MODE_RANGES = [
+    { min: 0.0125, max: 0.05 },
+    { min: 0.05,   max: 0.2 },
+    { min: 0.2,    max: 0.8 },
+    { min: 0.2,    max: 0.8 }
+  ];
+
+  const pedal = {
+    id,
+    type: 'dd3',
+    name: 'DD-3',
+    fullName: 'DIGITAL DELAY',
+    enabled: false,
+    input: input,
+    output: output,
+    nodes: { input, output, dry, delay, wet, feedback },
+    params: { level: 50, fback: 40, time: 50, mode: 2 },
+    defaultParams: { level: 50, fback: 40, time: 50, mode: 2 },
+    knobDefs: [
+      { param: 'level', label: 'E.LVL' },
+      { param: 'fback', label: 'F.BACK' },
+      { param: 'time', label: 'D.TIME' },
+      { param: 'mode', label: 'MODE' }
+    ],
+    updateLevel(val) {
+      this.params.level = val;
+      wet.gain.value = val / 100;
+    },
+    updateFback(val) {
+      this.params.fback = val;
+      if (mode === 3) return;
+      feedback.gain.value = (val / 100) * 0.95;
+    },
+    updateTime(val) {
+      this.params.time = val;
+      if (mode === 3) return;
+      const r = MODE_RANGES[mode];
+      delay.delayTime.value = r.min + (val / 100) * (r.max - r.min);
+    },
+    updateMode(val) {
+      this.params.mode = val;
+      mode = Math.min(3, Math.floor(val / 25));
+      if (mode === 3) {
+        feedback.gain.value = 0.98;
+      } else {
+        feedback.gain.value = (this.params.fback / 100) * 0.95;
+        const r = MODE_RANGES[mode];
+        delay.delayTime.value = r.min + (this.params.time / 100) * (r.max - r.min);
+      }
+    },
+    toggle() {
+      this.enabled = !this.enabled;
+      rebuildChain();
+      renderBoard();
+    }
+  };
+
+  pedal.updateLevel(50);
+  pedal.updateFback(40);
+  pedal.updateTime(50);
+  pedal.updateMode(50);
+
+  return pedal;
+}
+
+function createRV2() {
+  ensureAudio();
+  const id = 'pedal_' + (pedalIdCounter++);
+
+  const input = actx.createGain();
+  input.gain.value = 1;
+  const output = actx.createGain();
+  output.gain.value = 1;
+
+  // Dry path
+  const dry = actx.createGain();
+  dry.gain.value = 1;
+  input.connect(dry);
+  dry.connect(output);
+
+  // Pre-EQ filter
+  const preEQ = actx.createBiquadFilter();
+  preEQ.type = 'peaking';
+  preEQ.frequency.value = 2000;
+  preEQ.Q.value = 0.5;
+  preEQ.gain.value = 0;
+  input.connect(preEQ);
+
+  // Schroeder reverb: 4 parallel comb filters → 2 series allpass
+  const MODES = {
+    0: { name: 'ROOM',  delays: [0.029, 0.031, 0.037, 0.041], ap: [0.005, 0.007], decay: 0.6 },
+    1: { name: 'HALL1', delays: [0.043, 0.047, 0.053, 0.059], ap: [0.012, 0.017], decay: 0.75 },
+    2: { name: 'HALL2', delays: [0.061, 0.067, 0.073, 0.079], ap: [0.015, 0.021], decay: 0.85 },
+    3: { name: 'PLATE', delays: [0.023, 0.029, 0.033, 0.039], ap: [0.003, 0.005], decay: 0.7 },
+    4: { name: 'GATE',  delays: [0.019, 0.023, 0.029, 0.031], ap: [0.004, 0.006], decay: 0.3 },
+    5: { name: 'P.DLY', delays: [0.037, 0.041, 0.053, 0.061], ap: [0.009, 0.013], decay: 0.65 }
+  };
+
+  let currentMode = 0;
+
+  // Comb filters (delay + feedback)
+  const combs = [];
+  const combFBs = [];
+  const combMixer = actx.createGain();
+  combMixer.gain.value = 0.25;
+
+  for (let i = 0; i < 4; i++) {
+    const d = actx.createDelay(0.1);
+    d.delayTime.value = MODES[0].delays[i];
+    const fb = actx.createGain();
+    fb.gain.value = MODES[0].decay;
+    const lpf = actx.createBiquadFilter();
+    lpf.type = 'lowpass';
+    lpf.frequency.value = 8000;
+    lpf.Q.value = 0.3;
+    preEQ.connect(d);
+    d.connect(lpf);
+    lpf.connect(fb);
+    fb.connect(d);
+    lpf.connect(combMixer);
+    combs.push(d);
+    combFBs.push({ fb, lpf });
+  }
+
+  // Allpass diffusers
+  const ap1 = actx.createBiquadFilter();
+  ap1.type = 'allpass';
+  ap1.frequency.value = 1500;
+  const ap2 = actx.createBiquadFilter();
+  ap2.type = 'allpass';
+  ap2.frequency.value = 800;
+
+  const wet = actx.createGain();
+  wet.gain.value = 0.5;
+
+  combMixer.connect(ap1);
+  ap1.connect(ap2);
+  ap2.connect(wet);
+  wet.connect(output);
+
+  function applyMode(m, timeScale) {
+    const cfg = MODES[m];
+    const t = 0.3 + (timeScale / 100) * 2.5;
+    for (let i = 0; i < 4; i++) {
+      combs[i].delayTime.value = cfg.delays[i] * (t / 1.0);
+      combFBs[i].fb.gain.value = cfg.decay * Math.min(0.95, t / 3);
+      combFBs[i].lpf.frequency.value = m === 4 ? 3000 : 8000;
+    }
+  }
+
+  const pedal = {
+    id,
+    type: 'rv2',
+    name: 'RV-2',
+    fullName: 'DIGITAL REVERB',
+    enabled: false,
+    input: input,
+    output: output,
+    nodes: { input, output, dry, preEQ, combs, combFBs, combMixer, ap1, ap2, wet },
+    params: { level: 50, preEq: 50, time: 50, mode: 0 },
+    defaultParams: { level: 50, preEq: 50, time: 50, mode: 0 },
+    knobDefs: [
+      { param: 'level', label: 'E.LVL' },
+      { param: 'preEq', label: 'PRE EQ' },
+      { param: 'time', label: 'TIME' },
+      { param: 'mode', label: 'MODE' }
+    ],
+    updateLevel(val) {
+      this.params.level = val;
+      wet.gain.value = val / 100;
+    },
+    updatePreEq(val) {
+      this.params.preEq = val;
+      preEQ.gain.value = ((val / 100) - 0.5) * 12;
+    },
+    updateTime(val) {
+      this.params.time = val;
+      applyMode(currentMode, val);
+    },
+    updateMode(val) {
+      this.params.mode = val;
+      currentMode = Math.min(5, Math.floor(val / 17));
+      applyMode(currentMode, this.params.time);
+    },
+    toggle() {
+      this.enabled = !this.enabled;
+      rebuildChain();
+      renderBoard();
+    }
+  };
+
+  pedal.updateLevel(50);
+  pedal.updatePreEq(50);
+  pedal.updateTime(50);
+  pedal.updateMode(0);
+
+  return pedal;
+}
+
+// ══════════════════════════════════════════
+//  SLIDER INTERACTION
+// ══════════════════════════════════════════
+function resetParam(pedalId, param, slider) {
+  const p = pedals.find(x => x.id === pedalId);
+  if (!p || !p.defaultParams) return;
+  const def = p.defaultParams[param];
+  if (def === undefined) return;
+  slider.value = def;
+  onParamInput(pedalId, param, slider);
+}
+
+function onParamInput(pedalId, param, slider) {
+  const val = parseInt(slider.value);
+  const p = pedals.find(x => x.id === pedalId);
+  if (!p) return;
+  const fn = 'update' + param[0].toUpperCase() + param.slice(1);
+  if (p[fn]) p[fn](val);
+  const valEl = document.getElementById(pedalId + '-' + param + '-val');
+  if (valEl) valEl.textContent = formatParamVal(p, param, val);
+}
+
+function formatParamVal(p, param, val) {
+  if (p.type === 'sd1') {
+    if (param === 'drive') return (val / 10).toFixed(1);
+    if (param === 'tone') return (val / 10).toFixed(1);
+    if (param === 'level') return (val / 10).toFixed(1);
+  }
+  if (p.type === 'tr2') {
+    if (param === 'rate') return (0.5 + (val / 100) * 9.5).toFixed(1);
+    if (param === 'wave') return val < 33 ? 'TRI' : val < 66 ? 'TRP' : 'SQR';
+    if (param === 'depth') return (val / 10).toFixed(1);
+  }
+  if (p.type === 'vb2') {
+    if (param === 'rate') return (2 + (val / 100) * 9).toFixed(1);
+    if (param === 'depth') return (val / 10).toFixed(1);
+    if (param === 'rise') return (0.05 + (val / 100) * 2.95).toFixed(1) + 's';
+  }
+  if (p.type === 'ce2') {
+    if (param === 'rate') return (0.5 + (val / 100) * 7.5).toFixed(1);
+    if (param === 'depth') return (val / 10).toFixed(1);
+  }
+  if (p.type === 'ph1') {
+    if (param === 'rate') return (0.06 + (val / 100) * 9.94).toFixed(1);
+    if (param === 'depth') return (val / 10).toFixed(1);
+    if (param === 'res') return (val / 10).toFixed(1);
+  }
+  if (p.type === 'bf2') {
+    if (param === 'manual') return ((0.001 + (val / 100) * 0.012) * 1000).toFixed(1);
+    if (param === 'depth') return (val / 10).toFixed(1);
+    if (param === 'rate') return (0.06 + (val / 100) * 9.94).toFixed(1);
+    if (param === 'res') return (val / 10).toFixed(1);
+  }
+  if (p.type === 'dd3') {
+    if (param === 'level') return (val / 10).toFixed(1);
+    if (param === 'fback') return (val / 10).toFixed(1);
+    if (param === 'time') return (val / 10).toFixed(1);
+    const m = Math.min(3, Math.floor(val / 25));
+    if (param === 'mode') return ['50ms','200m','800m','HOLD'][m];
+  }
+  if (p.type === 'rv2') {
+    if (param === 'level') return (val / 10).toFixed(1);
+    if (param === 'preEq') return (val / 10).toFixed(1);
+    if (param === 'time') return (val / 10).toFixed(1);
+    const m = Math.min(5, Math.floor(val / 17));
+    if (param === 'mode') return ['ROOM','HAL1','HAL2','PLAT','GATE','P.DL'][m];
+  }
+  return Math.round(val);
+}
+
+// ══════════════════════════════════════════
+//  DRAG-AND-DROP REORDER
+// ══════════════════════════════════════════
+function onPedalDragStart(e, pedalId) {
+  dragPedalId = pedalId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.target.closest('.pedal').classList.add('dragging');
+}
+
+function onPedalDragEnd(e) {
+  dragPedalId = null;
+  document.querySelectorAll('.pedal').forEach(el => {
+    el.classList.remove('dragging', 'drag-over-left', 'drag-over-right');
+  });
+}
+
+function onPedalDragOver(e, pedalId) {
+  if (!dragPedalId || dragPedalId === pedalId) return;
+  e.preventDefault();
+  const rect = e.target.closest('.pedal').getBoundingClientRect();
+  const mid = rect.left + rect.width / 2;
+  const el = e.target.closest('.pedal');
+  el.classList.remove('drag-over-left', 'drag-over-right');
+  if (e.clientX < mid) el.classList.add('drag-over-left');
+  else el.classList.add('drag-over-right');
+}
+
+function onPedalDrop(e, targetId) {
+  e.preventDefault();
+  if (!dragPedalId || dragPedalId === targetId) return;
+  const rect = e.target.closest('.pedal').getBoundingClientRect();
+  const mid = rect.left + rect.width / 2;
+  const insertBefore = e.clientX < mid;
+  const fromIdx = pedalOrder.indexOf(dragPedalId);
+  pedalOrder.splice(fromIdx, 1);
+  let toIdx = pedalOrder.indexOf(targetId);
+  if (!insertBefore) toIdx++;
+  pedalOrder.splice(toIdx, 0, dragPedalId);
+  dragPedalId = null;
+  rebuildChain();
+  renderBoard();
+}
+
+// ══════════════════════════════════════════
+//  SLOT MANAGEMENT
+// ══════════════════════════════════════════
+function destroyPedal(pedal) {
+  const idx = pedals.indexOf(pedal);
+  if (idx !== -1) pedals.splice(idx, 1);
+  const oidx = pedalOrder.indexOf(pedal.id);
+  if (oidx !== -1) pedalOrder.splice(oidx, 1);
+  const nodes = pedal.nodes;
+  for (const key in nodes) {
+    const n = nodes[key];
+    if (Array.isArray(n)) n.forEach(x => { try { x.disconnect(); } catch(e){} });
+    else if (n && n.disconnect) try { n.disconnect(); } catch(e){}
+    if (n && n.stop) try { n.stop(); } catch(e){}
+  }
+}
+
+function addSlot(type) {
+  ensureAudio();
+  const factory = PEDAL_TYPES[type];
+  if (!factory) return;
+  const pedal = factory.create();
+  pedals.push(pedal);
+  pedalOrder.push(pedal.id);
+  rebuildChain();
+  renderBoard();
+}
+
+function removeSlot(pedalId) {
+  const p = pedals.find(x => x.id === pedalId);
+  if (p) destroyPedal(p);
+  rebuildChain();
+  renderBoard();
+}
+
+function changeSlotType(pedalId, newType) {
+  const oldPedal = pedals.find(x => x.id === pedalId);
+  if (!oldPedal) return;
+  const orderIdx = pedalOrder.indexOf(pedalId);
+  destroyPedal(oldPedal);
+  ensureAudio();
+  const factory = PEDAL_TYPES[newType];
+  if (!factory) return;
+  const newPedal = factory.create();
+  pedals.push(newPedal);
+  pedalOrder.splice(orderIdx, 0, newPedal.id);
+  rebuildChain();
+  renderBoard();
+}
+
+// ══════════════════════════════════════════
+//  RENDER BOARD
+// ══════════════════════════════════════════
+function renderBoard() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+
+  for (let i = 0; i < pedalOrder.length; i++) {
+    const pid = pedalOrder[i];
+    const p = pedals.find(x => x.id === pid);
+
+    const el = document.createElement('div');
+    el.className = 'pedal';
+    el.ondragover = e => onPedalDragOver(e, pid);
+    el.ondrop = e => onPedalDrop(e, pid);
+
+    const typeOptions = Object.keys(PEDAL_TYPES).map(t =>
+      '<option value="' + t + '"' + (t === p.type ? ' selected' : '') + '>' +
+        PEDAL_TYPES[t].name + '</option>'
+    ).join('');
+
+    const paramsHtml = (p.knobDefs || []).map(k => {
+      const val = p.params[k.param];
+      return '<div class="pedal-param">' +
+        '<span class="p-label">' + k.label + '</span>' +
+        '<input type="range" min="0" max="100" value="' + val + '" ' +
+          'oninput="onParamInput(\'' + pid + '\',\'' + k.param + '\',this)" ' +
+          'ondblclick="resetParam(\'' + pid + '\',\'' + k.param + '\',this)">' +
+        '<span class="p-val" id="' + pid + '-' + k.param + '-val">' + formatParamVal(p, k.param, val) + '</span>' +
+      '</div>';
+    }).join('');
+
+    el.innerHTML =
+      '<div class="slot-header">' +
+        '<select class="crt-select slot-select" onchange="changeSlotType(\'' + pid + '\',this.value)">' +
+          typeOptions +
+        '</select>' +
+        '<span class="slot-remove" onclick="removeSlot(\'' + pid + '\')" title="Remove">✕</span>' +
+      '</div>' +
+      '<div class="pedal-body">' +
+        '<div class="pedal-name drag-handle" draggable="true" ' +
+          'ondragstart="onPedalDragStart(event,\'' + pid + '\')" ' +
+          'ondragend="onPedalDragEnd(event)">' + p.name +
+          '<span class="pedal-led ' + (p.enabled ? 'on' : 'off') + '" ' +
+            'onclick="togglePedal(\'' + pid + '\')" title="ON/OFF">●</span>' +
+        '</div>' +
+        '<div class="pedal-subname">' + (p.fullName || '') + '</div>' +
+        '<div class="pedal-params">' + paramsHtml + '</div>' +
+        '<div class="pedal-foot">' +
+          '<button class="btn" onclick="togglePedal(\'' + pid + '\')">' +
+            (p.enabled ? '▣ ON' : '▢ OFF') + '</button>' +
+        '</div>' +
+      '</div>';
+
+    board.appendChild(el);
+  }
+
+  // Add pedal button
+  const addBtn = document.createElement('div');
+  addBtn.className = 'pedal add-slot';
+  addBtn.innerHTML = '<div class="add-slot-inner" onclick="addSlot(\'sd1\')">+ ADD</div>';
+  board.appendChild(addBtn);
+
+  render();
+}
+
+function togglePedal(pid) {
+  ensureAudio();
+  const p = pedals.find(x => x.id === pid);
+  if (p) p.toggle();
+}
+
+// ══════════════════════════════════════════
+//  SCOPE & METER
+// ══════════════════════════════════════════
+const scopeCanvas = document.getElementById('scope-canvas');
+const scopeCtx = scopeCanvas.getContext('2d');
+
+function drawScope() {
+  if (!analyser) { requestAnimationFrame(drawScope); return; }
+  const w = scopeCanvas.width = scopeCanvas.offsetWidth;
+  const h = scopeCanvas.height = scopeCanvas.offsetHeight;
+  const data = new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(data);
+
+  scopeCtx.fillStyle = '#0a0a0a';
+  scopeCtx.fillRect(0, 0, w, h);
+
+  scopeCtx.strokeStyle = '#1a1a1a';
+  scopeCtx.beginPath();
+  scopeCtx.moveTo(0, h / 2);
+  scopeCtx.lineTo(w, h / 2);
+  scopeCtx.stroke();
+
+  scopeCtx.strokeStyle = '#4a8a4a';
+  scopeCtx.lineWidth = 1;
+  scopeCtx.beginPath();
+  const step = Math.floor(data.length / w) || 1;
+  for (let i = 0; i < w; i++) {
+    const v = data[i * step] || 0;
+    const y = (1 - v) * h / 2;
+    if (i === 0) scopeCtx.moveTo(0, y);
+    else scopeCtx.lineTo(i, y);
+  }
+  scopeCtx.stroke();
+  requestAnimationFrame(drawScope);
+}
+
+function drawMeter() {
+  if (!analyser) { requestAnimationFrame(drawMeter); return; }
+  const data = new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(data);
+  let rms = 0;
+  for (let i = 0; i < data.length; i++) rms += data[i] * data[i];
+  rms = Math.sqrt(rms / data.length);
+  const db = 20 * Math.log10(Math.max(rms, 0.0001));
+  const pct = Math.max(0, Math.min(100, (db + 60) / 60 * 100));
+  const barW = 30;
+  const filled = Math.round(pct / 100 * barW);
+  const bar = '█'.repeat(filled) + '░'.repeat(barW - filled);
+  document.getElementById('meter-ascii').textContent = '│' + bar + '│';
+  requestAnimationFrame(drawMeter);
+}
+
+// ══════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════
+document.addEventListener('click', () => ensureAudio(), { once: true });
+
+addSlot('sd1');
+</script>
+</body>
+</html>

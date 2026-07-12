@@ -1890,6 +1890,141 @@ function scaleCrt() {
 }
 window.addEventListener('resize', scaleCrt);
 
+// ══════════════════════════════════════════
+//  AUDIO BUS BROADCASTER
+// ══════════════════════════════════════════
+const BUS_BUFFER_SIZE = 8192;
+const BUS_ID = 'synth_' + Math.random().toString(36).slice(2, 8);
+const BUS_NAME = 'BB SYNTH';
+let busBroadcastChannel = null;
+let busBroadcasterNode = null;
+let busSAB = null;
+let busSubscribers = new Set();
+
+const busSenderSABCode = `
+class BusSenderSAB extends AudioWorkletProcessor {
+  constructor(options) {
+    super();
+    const { sab, bufferSize } = options.processorOptions;
+    this.indices = new Int32Array(sab, 0, 4);
+    this.samples = new Float32Array(sab, 16);
+    this.bufferSize = bufferSize;
+  }
+  process(inputs) {
+    const input = inputs[0][0];
+    if (!input) return true;
+    const writeIdx = Atomics.load(this.indices, 0);
+    for (let i = 0; i < input.length; i++) {
+      this.samples[(writeIdx + i) % this.bufferSize] = input[i];
+    }
+    Atomics.store(this.indices, 0, (writeIdx + input.length) % this.bufferSize);
+    return true;
+  }
+}
+registerProcessor('bus-sender-sab', BusSenderSAB);
+`;
+
+const busSenderMPCode = `
+class BusSenderMP extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.active = false;
+    this.port.onmessage = (e) => { this.active = e.data.active; };
+  }
+  process(inputs) {
+    const input = inputs[0][0];
+    if (!input || !this.active) return true;
+    const copy = new Float32Array(input.length);
+    copy.set(input);
+    this.port.postMessage(copy, [copy.buffer]);
+    return true;
+  }
+}
+registerProcessor('bus-sender-mp', BusSenderMP);
+`;
+
+async function initBusBroadcaster() {
+  if (!audioCtx || busBroadcasterNode) return;
+
+  const useSAB = typeof SharedArrayBuffer !== 'undefined' && crossOriginIsolated;
+
+  if (useSAB) {
+    const byteLength = 16 + BUS_BUFFER_SIZE * 4;
+    busSAB = new SharedArrayBuffer(byteLength);
+    const indices = new Int32Array(busSAB, 0, 4);
+    Atomics.store(indices, 0, 0);
+    Atomics.store(indices, 1, 0);
+    Atomics.store(indices, 2, BUS_BUFFER_SIZE);
+    Atomics.store(indices, 3, 1);
+  }
+
+  const code = useSAB ? busSenderSABCode : busSenderMPCode;
+  const blob = new Blob([code], { type: 'application/javascript' });
+  const url = URL.createObjectURL(blob);
+  await audioCtx.audioWorklet.addModule(url);
+  URL.revokeObjectURL(url);
+
+  if (useSAB) {
+    busBroadcasterNode = new AudioWorkletNode(audioCtx, 'bus-sender-sab', {
+      processorOptions: { sab: busSAB, bufferSize: BUS_BUFFER_SIZE }
+    });
+  } else {
+    busBroadcasterNode = new AudioWorkletNode(audioCtx, 'bus-sender-mp');
+    busBroadcasterNode.port.onmessage = (e) => {
+      if (busSubscribers.size > 0) {
+        busBroadcastChannel.postMessage({ type: 'audio', id: BUS_ID, samples: e.data });
+      }
+    };
+  }
+
+  analyserNode.connect(busBroadcasterNode);
+}
+
+function initBusChannel() {
+  busBroadcastChannel = new BroadcastChannel('bb-audio-bus');
+
+  const announce = () => {
+    busBroadcastChannel.postMessage({
+      type: 'announce', id: BUS_ID, name: BUS_NAME,
+      sab: busSAB || null
+    });
+  };
+
+  busBroadcastChannel.onmessage = (e) => {
+    const msg = e.data;
+    if (msg.type === 'discover') announce();
+    if (msg.type === 'subscribe' && msg.sourceId === BUS_ID) {
+      busSubscribers.add(msg.subscriberId);
+      if (busBroadcasterNode && busBroadcasterNode.port) {
+        busBroadcasterNode.port.postMessage({ active: true });
+      }
+    }
+    if (msg.type === 'unsubscribe' && msg.sourceId === BUS_ID) {
+      busSubscribers.delete(msg.subscriberId);
+      if (busSubscribers.size === 0 && busBroadcasterNode && busBroadcasterNode.port) {
+        busBroadcasterNode.port.postMessage({ active: false });
+      }
+    }
+  };
+
+  announce();
+  setInterval(announce, 3000);
+
+  window.addEventListener('beforeunload', () => {
+    busBroadcastChannel.postMessage({ type: 'leave', id: BUS_ID });
+  });
+}
+
+const origEnsureAudio = ensureAudio;
+ensureAudio = function() {
+  origEnsureAudio();
+  if (audioCtx && !busBroadcasterNode) {
+    initBusBroadcaster();
+  }
+};
+
+initBusChannel();
+
 // ── INIT ─────────────────────────────────────────
 drawEnvCurve();
 document.getElementById('osc-type').addEventListener('change', drawOscWaveform);
