@@ -488,9 +488,10 @@ input[type="range"]::-webkit-slider-thumb {
         <div class="param-row">
           <span class="param-label">OUTPUT</span>
           <select id="synth-output" class="crt-select" style="width:90px;" onchange="setSynthOutput()">
-            <option value="speakers">DEFAULT</option>
-            <option value="bus">BUS ONLY</option>
+            <option value="">DEFAULT</option>
           </select>
+          <button class="btn" onclick="detectOutputDevices()" style="font-size:9px;padding:2px 6px;">DETECT</button>
+          <button class="btn" id="bus-toggle" onclick="toggleBus()" style="font-size:9px;padding:2px 6px;">BUS:OFF</button>
         </div>
       </div>
 
@@ -1912,36 +1913,35 @@ function scaleCrt() {
 }
 window.addEventListener('resize', scaleCrt);
 
+let busOnly = false;
+
 async function setSynthOutput() {
   if (!audioCtx || !analyserNode) return;
+  if (busOnly) return;
   const val = document.getElementById('synth-output').value;
-  if (val === 'bus') {
+  try { analyserNode.connect(audioCtx.destination); } catch(e) {}
+  try { if (audioCtx.setSinkId) await audioCtx.setSinkId(val || ''); } catch(e) {}
+}
+
+function toggleBus() {
+  busOnly = !busOnly;
+  const btn = document.getElementById('bus-toggle');
+  btn.textContent = busOnly ? 'BUS:ON' : 'BUS:OFF';
+  if (!audioCtx || !analyserNode) return;
+  if (busOnly) {
     try { analyserNode.disconnect(audioCtx.destination); } catch(e) {}
   } else {
-    analyserNode.connect(audioCtx.destination);
-    if (val && val !== 'speakers') {
-      try { if (audioCtx.setSinkId) await audioCtx.setSinkId(val); } catch(e) {}
-    } else {
-      try { if (audioCtx.setSinkId) await audioCtx.setSinkId(''); } catch(e) {}
-    }
+    try { analyserNode.connect(audioCtx.destination); } catch(e) {}
+    setSynthOutput();
   }
 }
 
 async function enumerateOutputDevices() {
   try {
-    let devices = await navigator.mediaDevices.enumerateDevices();
-    const hasLabels = devices.some(d => d.label);
-    if (!hasLabels) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach(t => t.stop());
-        devices = await navigator.mediaDevices.enumerateDevices();
-      } catch(e) {}
-    }
+    const devices = await navigator.mediaDevices.enumerateDevices();
     const sel = document.getElementById('synth-output');
     const current = sel.value;
-    const busOpt = sel.querySelector('option[value="bus"]');
-    sel.innerHTML = '<option value="speakers">DEFAULT</option>';
+    sel.innerHTML = '<option value="">DEFAULT</option>';
     for (const d of devices) {
       if (d.kind !== 'audiooutput') continue;
       if (d.deviceId === 'default' || d.deviceId === '') continue;
@@ -1950,11 +1950,19 @@ async function enumerateOutputDevices() {
       opt.textContent = d.label || ('Output ' + d.deviceId.slice(0, 8));
       sel.appendChild(opt);
     }
-    if (busOpt) sel.appendChild(busOpt.cloneNode(true));
-    else { const b = document.createElement('option'); b.value = 'bus'; b.textContent = 'BUS ONLY'; sel.appendChild(b); }
     if (current) sel.value = current;
   } catch(e) {}
 }
+
+async function detectOutputDevices() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(t => t.stop());
+  } catch(e) {}
+  await enumerateOutputDevices();
+}
+
+navigator.mediaDevices?.addEventListener('devicechange', () => enumerateOutputDevices());
 
 // ══════════════════════════════════════════
 //  AUDIO BUS BROADCASTER
