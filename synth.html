@@ -159,6 +159,12 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .btn:hover { border-color: #888; }
 .btn:active { background: #222; }
+.btn.bus-active {
+  color: #00BFFF;
+  border-color: #00BFFF;
+  text-shadow: 0 0 12px rgba(0, 191, 255, 0.5);
+  background: rgba(0, 191, 255, 0.08);
+}
 
 /* LFO canvas */
 #lfo-canvas {
@@ -485,14 +491,6 @@ input[type="range"]::-webkit-slider-thumb {
             <option value="16">16</option>
           </select>
         </div>
-        <div class="param-row">
-          <span class="param-label">OUTPUT</span>
-          <select id="synth-output" class="crt-select" style="width:90px;" onchange="setSynthOutput()">
-            <option value="">DEFAULT</option>
-          </select>
-          <button class="btn" onclick="detectOutputDevices()" style="font-size:9px;padding:2px 6px;">DETECT</button>
-          <button class="btn" id="bus-toggle" onclick="toggleBus()" style="font-size:9px;padding:2px 6px;">BUS:OFF</button>
-        </div>
       </div>
 
       <div class="divider"></div>
@@ -504,7 +502,7 @@ input[type="range"]::-webkit-slider-thumb {
             <option value="">— NONE —</option>
           </select>
         </div>
-        <div class="param-row" style="align-items:flex-start;">
+        <div class="param-row">
           <span class="param-label" style="width:32px; line-height:12px;">CH</span>
           <select id="midi-ch" class="crt-select" style="width:42px;">
             <option value="0">ALL</option>
@@ -525,10 +523,15 @@ input[type="range"]::-webkit-slider-thumb {
             <option value="15">15</option>
             <option value="16">16</option>
           </select>
-          <div style="display:flex; flex-direction:column; gap:4px; margin-left:auto;">
-            <button class="btn" onclick="detectMidi()" style="padding:3px 6px; font-size:10px; width:50px;">DETECT</button>
-            <button class="btn" onclick="panic()" style="padding:3px 6px; font-size:10px; width:50px;">PANIC</button>
-          </div>
+          <button class="btn" onclick="panic()" style="padding:3px 6px; font-size:10px; margin-left:auto;">PANIC</button>
+        </div>
+        <div class="param-row">
+          <span class="param-label" style="width:32px;">OUTPUT</span>
+          <select id="synth-output" class="crt-select" style="flex:1; min-width:0;" onchange="setSynthOutput()">
+            <option value="">DEFAULT</option>
+          </select>
+          <button class="btn" onclick="detectOutputDevices()" style="font-size:9px;padding:2px 6px;">DETECT</button>
+          <button class="btn" id="bus-toggle" onclick="toggleBus()" style="font-size:9px;padding:2px 6px;">BUS</button>
         </div>
       </div>
     </div>
@@ -1926,7 +1929,8 @@ async function setSynthOutput() {
 function toggleBus() {
   busOnly = !busOnly;
   const btn = document.getElementById('bus-toggle');
-  btn.textContent = busOnly ? 'BUS:ON' : 'BUS:OFF';
+  btn.textContent = 'BUS';
+  btn.classList.toggle('bus-active', busOnly);
   if (!audioCtx || !analyserNode) return;
   if (busOnly) {
     try { analyserNode.disconnect(audioCtx.destination); } catch(e) {}
