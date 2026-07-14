@@ -530,8 +530,11 @@ input[type="range"]::-webkit-slider-thumb {
           <select id="synth-output" class="crt-select" style="flex:1; min-width:0;" onchange="setSynthOutput()">
             <option value="">DEFAULT</option>
           </select>
-          <button class="btn" onclick="detectOutputDevices()" style="font-size:9px;padding:2px 6px;">DETECT</button>
-          <button class="btn" id="bus-toggle" onclick="toggleBus()" style="font-size:9px;padding:2px 6px;">BUS</button>
+        </div>
+        <div class="param-row">
+          <span class="param-label" style="width:32px;"></span>
+          <button class="btn" onclick="detectOutputDevices()" style="font-size:10px;padding:3px 6px;">DETECT</button>
+          <button class="btn" id="bus-toggle" onclick="toggleBus()" style="font-size:10px;padding:3px 6px;">BUS</button>
         </div>
       </div>
     </div>
