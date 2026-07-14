@@ -500,6 +500,7 @@ input[type="range"]::-webkit-slider-thumb {
           <span class="param-label" style="width:32px;">INPUT</span>
           <select id="midi-select" class="crt-select" style="flex:1; min-width:0;">
             <option value="">— NONE —</option>
+            <option value="__detect__">↻ DETECT</option>
           </select>
         </div>
         <div class="param-row">
@@ -1256,16 +1257,21 @@ function populateDevices() {
   const sel = document.getElementById('midi-select');
   const prev = sel.value;
   sel.innerHTML = '<option value="">— NONE —</option>';
-  if (!midiAccess) return;
-  for (const input of midiAccess.inputs.values()) {
-    const opt = document.createElement('option');
-    opt.value = input.id;
-    opt.textContent = input.name;
-    sel.appendChild(opt);
+  if (midiAccess) {
+    for (const input of midiAccess.inputs.values()) {
+      const opt = document.createElement('option');
+      opt.value = input.id;
+      opt.textContent = input.name;
+      sel.appendChild(opt);
+    }
   }
-  if (prev && sel.querySelector(`option[value="${prev}"]`)) {
+  const detectOpt = document.createElement('option');
+  detectOpt.value = '__detect__';
+  detectOpt.textContent = '↻ DETECT';
+  sel.appendChild(detectOpt);
+  if (prev && prev !== '__detect__' && sel.querySelector(`option[value="${prev}"]`)) {
     sel.value = prev;
-  } else if (sel.options.length > 1) {
+  } else if (sel.options.length > 2) {
     sel.value = sel.options[1].value;
   }
   connectInput();
@@ -1282,7 +1288,15 @@ function connectInput() {
   if (input) input.onmidimessage = onMidiMessage;
 }
 
-document.getElementById('midi-select').addEventListener('change', connectInput);
+document.getElementById('midi-select').addEventListener('change', () => {
+  const sel = document.getElementById('midi-select');
+  if (sel.value === '__detect__') {
+    sel.value = '';
+    detectMidi();
+    return;
+  }
+  connectInput();
+});
 
 // ── PARAMETER UPDATES ────────────────────────────
 document.getElementById('osc-type').addEventListener('change', () => {
