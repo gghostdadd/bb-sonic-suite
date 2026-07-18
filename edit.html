@@ -1841,14 +1841,19 @@ async function saveWav() {
   }
 
   const blob = new Blob([buf], { type: 'audio/wav' });
-  const now = new Date();
-  const ts = now.getFullYear() + String(now.getMonth()+1).padStart(2,'0') + String(now.getDate()).padStart(2,'0')
-    + '_' + String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0') + String(now.getSeconds()).padStart(2,'0');
-  const rateTag = targetRate >= 1000 ? (targetRate / 1000) + 'k' : targetRate;
-  const chTag = isMono ? 'mono' : 'st';
+  let saveName;
+  if (loadedFileName) {
+    const base = loadedFileName.replace(/\.[^.]+$/, '');
+    saveName = base + '_edit.wav';
+  } else {
+    const now = new Date();
+    const ts = now.getFullYear() + String(now.getMonth()+1).padStart(2,'0') + String(now.getDate()).padStart(2,'0')
+      + '_' + String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0') + String(now.getSeconds()).padStart(2,'0');
+    saveName = `edit_${ts}.wav`;
+  }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `edit_${ts}_${rateTag}_${bps}b_${chTag}.wav`;
+  a.download = saveName;
   a.click();
   URL.revokeObjectURL(a.href);
 }
