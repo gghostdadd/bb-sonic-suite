@@ -1217,8 +1217,10 @@ function playAll() {
   if (!audioData) return;
   if (selStart !== selEnd) {
     play(selStart, selEnd);
+  } else if (loopEnabled) {
+    cursorPos = 0;
+    play(0, getTotalSamples());
   } else {
-    // If cursor is at the end, wrap to beginning
     const from = cursorPos >= getTotalSamples() ? 0 : cursorPos;
     if (from === 0) cursorPos = 0;
     play(from, getTotalSamples());
