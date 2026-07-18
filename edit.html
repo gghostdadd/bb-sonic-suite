@@ -404,9 +404,12 @@ function render() {
   if (state === 'playing' && audioData) {
     const elapsed = audioCtx.currentTime - playStartTime;
     let pos = playFromPos + Math.round(elapsed * SAMPLE_RATE);
-    if (loopEnabled && playToPos > playFromPos) {
+    if (loopEnabled && selStart !== selEnd && playToPos > playFromPos) {
       const loopLen = playToPos - playFromPos;
       pos = playFromPos + ((pos - playFromPos) % loopLen);
+    } else if (loopEnabled && selStart === selEnd) {
+      const total = getTotalSamples();
+      if (pos >= total) pos = pos % total;
     } else if (pos >= playToPos) {
       pos = playToPos;
     }
@@ -1218,8 +1221,9 @@ function playAll() {
   if (selStart !== selEnd) {
     play(selStart, selEnd);
   } else if (loopEnabled) {
-    cursorPos = 0;
-    play(0, getTotalSamples());
+    const from = cursorPos >= getTotalSamples() ? 0 : cursorPos;
+    if (from === 0) cursorPos = 0;
+    play(from, getTotalSamples());
   } else {
     const from = cursorPos >= getTotalSamples() ? 0 : cursorPos;
     if (from === 0) cursorPos = 0;
@@ -1317,8 +1321,9 @@ async function play(from, to) {
   const startOffset = from / SAMPLE_RATE;
   const duration = (to - from) / SAMPLE_RATE;
 
-  playSource.loopStart = startOffset;
-  playSource.loopEnd = startOffset + duration;
+  const hasSelection = selStart !== selEnd;
+  playSource.loopStart = (loopEnabled && !hasSelection) ? 0 : startOffset;
+  playSource.loopEnd = (loopEnabled && !hasSelection) ? buf.duration : startOffset + duration;
   playSource.loop = loopEnabled;
 
   playSource.onended = () => {
