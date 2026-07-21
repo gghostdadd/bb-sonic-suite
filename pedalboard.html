@@ -1660,19 +1660,19 @@ function createRV2() {
   preEQ.gain.value = 0;
   input.connect(preEQ);
 
-  // Schroeder reverb: 4 parallel comb filters → 2 series allpass
+  // Schroeder reverb: 4 parallel comb filters → 3 series delay-line allpass
   const MODES = {
-    0: { name: 'ROOM',  delays: [0.029, 0.031, 0.037, 0.041], ap: [0.005, 0.007], decay: 0.6 },
-    1: { name: 'HALL1', delays: [0.043, 0.047, 0.053, 0.059], ap: [0.012, 0.017], decay: 0.75 },
-    2: { name: 'HALL2', delays: [0.061, 0.067, 0.073, 0.079], ap: [0.015, 0.021], decay: 0.85 },
-    3: { name: 'PLATE', delays: [0.023, 0.029, 0.033, 0.039], ap: [0.003, 0.005], decay: 0.7 },
-    4: { name: 'GATE',  delays: [0.019, 0.023, 0.029, 0.031], ap: [0.004, 0.006], decay: 0.3 },
-    5: { name: 'P.DLY', delays: [0.037, 0.041, 0.053, 0.061], ap: [0.009, 0.013], decay: 0.65 }
+    0: { name: 'ROOM',  delays: [0.0297, 0.0371, 0.0411, 0.0437], ap: [0.0050, 0.0068, 0.0040], decay: 0.55, lpf: 6000 },
+    1: { name: 'HALL1', delays: [0.0433, 0.0517, 0.0587, 0.0631], ap: [0.0120, 0.0170, 0.0095], decay: 0.70, lpf: 5000 },
+    2: { name: 'HALL2', delays: [0.0617, 0.0733, 0.0813, 0.0891], ap: [0.0150, 0.0210, 0.0127], decay: 0.80, lpf: 4500 },
+    3: { name: 'PLATE', delays: [0.0227, 0.0293, 0.0347, 0.0401], ap: [0.0013, 0.0023, 0.0017], decay: 0.65, lpf: 7000 },
+    4: { name: 'GATE',  delays: [0.0193, 0.0233, 0.0291, 0.0317], ap: [0.0040, 0.0057, 0.0033], decay: 0.25, lpf: 3000 },
+    5: { name: 'P.DLY', delays: [0.0373, 0.0473, 0.0537, 0.0617], ap: [0.0090, 0.0130, 0.0073], decay: 0.60, lpf: 5500 }
   };
 
   let currentMode = 0;
 
-  // Comb filters (delay + feedback)
+  // Comb filters (delay + feedback + damping LPF)
   const combs = [];
   const combFBs = [];
   const combMixer = actx.createGain();
@@ -1685,8 +1685,8 @@ function createRV2() {
     fb.gain.value = MODES[0].decay;
     const lpf = actx.createBiquadFilter();
     lpf.type = 'lowpass';
-    lpf.frequency.value = 8000;
-    lpf.Q.value = 0.3;
+    lpf.frequency.value = MODES[0].lpf;
+    lpf.Q.value = 0.1;
     preEQ.connect(d);
     d.connect(lpf);
     lpf.connect(fb);
@@ -1696,30 +1696,52 @@ function createRV2() {
     combFBs.push({ fb, lpf });
   }
 
-  // Allpass diffusers
-  const ap1 = actx.createBiquadFilter();
-  ap1.type = 'allpass';
-  ap1.frequency.value = 1500;
-  const ap2 = actx.createBiquadFilter();
-  ap2.type = 'allpass';
-  ap2.frequency.value = 800;
+  // Delay-line allpass diffusers (proper Schroeder allpass: delay + feedforward/feedback)
+  function makeAllpass(time, coeff) {
+    const apIn = actx.createGain();
+    const apOut = actx.createGain();
+    const delay = actx.createDelay(0.1);
+    delay.delayTime.value = time;
+    const fbGain = actx.createGain();
+    fbGain.gain.value = -coeff;
+    const ffGain = actx.createGain();
+    ffGain.gain.value = coeff;
+    // input → delay → apOut
+    apIn.connect(delay);
+    delay.connect(apOut);
+    // feedback: delay → fbGain → delay (via apIn sum point)
+    delay.connect(fbGain);
+    fbGain.connect(apIn);
+    // feedforward: input → ffGain → apOut
+    apIn.connect(ffGain);
+    ffGain.connect(apOut);
+    return { input: apIn, output: apOut, delay, fbGain, ffGain };
+  }
+
+  const ap1 = makeAllpass(MODES[0].ap[0], 0.7);
+  const ap2 = makeAllpass(MODES[0].ap[1], 0.7);
+  const ap3 = makeAllpass(MODES[0].ap[2], 0.7);
 
   const wet = actx.createGain();
   wet.gain.value = 0.5;
 
-  combMixer.connect(ap1);
-  ap1.connect(ap2);
-  ap2.connect(wet);
+  combMixer.connect(ap1.input);
+  ap1.output.connect(ap2.input);
+  ap2.output.connect(ap3.input);
+  ap3.output.connect(wet);
   wet.connect(output);
 
   function applyMode(m, timeScale) {
     const cfg = MODES[m];
     const t = 0.3 + (timeScale / 100) * 2.5;
     for (let i = 0; i < 4; i++) {
-      combs[i].delayTime.value = cfg.delays[i] * (t / 1.0);
+      combs[i].delayTime.value = cfg.delays[i] * t;
       combFBs[i].fb.gain.value = cfg.decay * Math.min(0.95, t / 3);
-      combFBs[i].lpf.frequency.value = m === 4 ? 3000 : 8000;
+      combFBs[i].lpf.frequency.value = cfg.lpf;
     }
+    ap1.delay.delayTime.value = cfg.ap[0] * t;
+    ap2.delay.delayTime.value = cfg.ap[1] * t;
+    ap3.delay.delayTime.value = cfg.ap[2] * t;
   }
 
   const pedal = {
@@ -1730,7 +1752,7 @@ function createRV2() {
     enabled: false,
     input: input,
     output: output,
-    nodes: { input, output, dry, preEQ, combs, combFBs, combMixer, ap1, ap2, wet },
+    nodes: { input, output, dry, preEQ, combs, combFBs, combMixer, ap1, ap2, ap3, wet },
     params: { level: 50, preEq: 50, time: 50, mode: 0 },
     defaultParams: { level: 50, preEq: 50, time: 50, mode: 0 },
     knobDefs: [
