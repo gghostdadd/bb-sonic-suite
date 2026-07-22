@@ -624,14 +624,14 @@ function disconnectBus() {
 initBusDiscovery();
 
 const PEDAL_TYPES = {
-  sd1:  { name: 'SD-1',  fullName: 'SUPER OVERDRIVE', create: () => createSD1() },
-  tr2:  { name: 'TR-2',  fullName: 'TREMOLO',         create: () => createTR2() },
-  vb2:  { name: 'VB-2',  fullName: 'VIBRATO',         create: () => createVB2() },
-  ce2:  { name: 'CE-2',  fullName: 'CHORUS',          create: () => createCE2() },
-  ph1:  { name: 'PH-1',  fullName: 'PHASER',          create: () => createPH1() },
-  bf2:  { name: 'BF-2',  fullName: 'FLANGER',         create: () => createBF2() },
-  dd3:  { name: 'DD-3',  fullName: 'DIGITAL DELAY',   create: () => createDD3() },
-  rv2:  { name: 'RV-2',  fullName: 'DIGITAL REVERB',  create: () => createRV2() }
+  sd1:  { name: 'DRIVE',    fullName: 'SD-1',   create: () => createSD1() },
+  tr2:  { name: 'TREMOLO',  fullName: 'TR-2',   create: () => createTR2() },
+  vb2:  { name: 'VIBRATO',  fullName: 'VB-2',   create: () => createVB2() },
+  ce2:  { name: 'CHORUS',   fullName: 'CE-2',   create: () => createCE2() },
+  ph1:  { name: 'PHASER',   fullName: 'PH-1',   create: () => createPH1() },
+  bf2:  { name: 'FLANGER',  fullName: 'BF-2',   create: () => createBF2() },
+  dd3:  { name: 'DELAY',    fullName: 'DD-3',   create: () => createDD3() },
+  rv2:  { name: 'REVERB',   fullName: 'RV-2',   create: () => createRV2() }
 };
 const KEY_MAP = { a:0, w:1, s:2, e:3, d:4, f:5, t:6, g:7, y:8, h:9, u:10, j:11, k:12 };
 let keyOctave = 4;
@@ -641,9 +641,9 @@ const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 //  ASCII FRAME
 // ══════════════════════════════════════════
 const W = 96;
-const IO_ROWS = 3;
+const IO_ROWS = 2;
 const BOARD_ROWS = 8;
-const OUT_ROWS = 5;
+const OUT_ROWS = 4;
 
 function pad(s)    { return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║'; }
 function center(s) { const l = Math.floor((W - s.length) / 2); return '║' + ' '.repeat(l) + s + ' '.repeat(Math.max(0, W - s.length - l)) + '║'; }
@@ -661,6 +661,7 @@ function render() {
   lines.push(hBar('═'));
   lines.push(pad('  INPUT / OUTPUT'));
   lines.push(pad(''));
+  lines.push(pad(''));
 
   // I/O blank rows
   const ioStart = lines.length;
@@ -670,6 +671,7 @@ function render() {
   lines.push(hBar('─'));
   lines.push(pad('  SIGNAL CHAIN'));
   lines.push(pad(''));
+  lines.push(pad(''));
 
   // Board blank rows
   const boardStart = lines.length;
@@ -678,6 +680,7 @@ function render() {
   // Output section
   lines.push(hBar('═'));
   lines.push(pad('  OUTPUT'));
+  lines.push(pad(''));
   lines.push(pad(''));
 
   const outStart = lines.length;
@@ -808,7 +811,7 @@ async function setOutputDevice() {
 function setInputVol() {
   const v = parseInt(document.getElementById('input-vol').value);
   document.getElementById('input-vol-val').textContent = v + '%';
-  if (inputGain) inputGain.gain.value = v / 100;
+  if (inputGain) inputGain.gain.linearRampToValueAtTime(v / 100, actx.currentTime + 0.02);
 }
 
 function setInputSource() {
@@ -1049,8 +1052,8 @@ function createSD1() {
   const pedal = {
     id,
     type: 'sd1',
-    name: 'SD-1',
-    fullName: 'SUPER OVERDRIVE',
+    name: 'DRIVE',
+    fullName: 'SD-1',
     enabled: false,
     input: preGain,
     output: level,
@@ -1134,8 +1137,8 @@ function createTR2() {
   const pedal = {
     id,
     type: 'tr2',
-    name: 'TR-2',
-    fullName: 'TREMOLO',
+    name: 'TREMOLO',
+    fullName: 'TR-2',
     enabled: false,
     input: input,
     output: vca,
@@ -1207,8 +1210,8 @@ function createVB2() {
   const pedal = {
     id,
     type: 'vb2',
-    name: 'VB-2',
-    fullName: 'VIBRATO',
+    name: 'VIBRATO',
+    fullName: 'VB-2',
     enabled: false,
     input: input,
     output: delay,
@@ -1301,8 +1304,8 @@ function createCE2() {
   const pedal = {
     id,
     type: 'ce2',
-    name: 'CE-2',
-    fullName: 'CHORUS',
+    name: 'CHORUS',
+    fullName: 'CE-2',
     enabled: false,
     input: input,
     output: output,
@@ -1400,8 +1403,8 @@ function createPH1() {
   const pedal = {
     id,
     type: 'ph1',
-    name: 'PH-1',
-    fullName: 'PHASER',
+    name: 'PHASER',
+    fullName: 'PH-1',
     enabled: false,
     input: input,
     output: output,
@@ -1493,8 +1496,8 @@ function createBF2() {
   const pedal = {
     id,
     type: 'bf2',
-    name: 'BF-2',
-    fullName: 'FLANGER',
+    name: 'FLANGER',
+    fullName: 'BF-2',
     enabled: false,
     input: input,
     output: output,
@@ -1582,8 +1585,8 @@ function createDD3() {
   const pedal = {
     id,
     type: 'dd3',
-    name: 'DD-3',
-    fullName: 'DIGITAL DELAY',
+    name: 'DELAY',
+    fullName: 'DD-3',
     enabled: false,
     input: input,
     output: output,
@@ -1734,21 +1737,23 @@ function createRV2() {
   function applyMode(m, timeScale) {
     const cfg = MODES[m];
     const t = 0.3 + (timeScale / 100) * 2.5;
+    const now = actx.currentTime;
+    const ramp = now + 0.05;
     for (let i = 0; i < 4; i++) {
-      combs[i].delayTime.value = cfg.delays[i] * t;
-      combFBs[i].fb.gain.value = cfg.decay * Math.min(0.95, t / 3);
-      combFBs[i].lpf.frequency.value = cfg.lpf;
+      combs[i].delayTime.linearRampToValueAtTime(cfg.delays[i] * t, ramp);
+      combFBs[i].fb.gain.linearRampToValueAtTime(cfg.decay * Math.min(0.95, t / 3), ramp);
+      combFBs[i].lpf.frequency.linearRampToValueAtTime(cfg.lpf, ramp);
     }
-    ap1.delay.delayTime.value = cfg.ap[0] * t;
-    ap2.delay.delayTime.value = cfg.ap[1] * t;
-    ap3.delay.delayTime.value = cfg.ap[2] * t;
+    ap1.delay.delayTime.linearRampToValueAtTime(cfg.ap[0] * t, ramp);
+    ap2.delay.delayTime.linearRampToValueAtTime(cfg.ap[1] * t, ramp);
+    ap3.delay.delayTime.linearRampToValueAtTime(cfg.ap[2] * t, ramp);
   }
 
   const pedal = {
     id,
     type: 'rv2',
-    name: 'RV-2',
-    fullName: 'DIGITAL REVERB',
+    name: 'REVERB',
+    fullName: 'RV-2',
     enabled: false,
     input: input,
     output: output,

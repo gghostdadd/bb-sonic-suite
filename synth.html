@@ -472,8 +472,8 @@ input[type="range"]::-webkit-slider-thumb {
       <div class="section">
         <div class="param-row">
           <span class="param-label">VOL</span>
-          <input type="range" id="master-vol" min="0" max="150" value="75" step="1">
-          <span class="param-value" id="vol-val">113%</span>
+          <input type="range" id="master-vol" min="-60" max="14" value="0" step="1">
+          <span class="param-value" id="vol-val">0 dB</span>
         </div>
         <div class="param-row">
           <span class="param-label">VEL</span>
@@ -744,7 +744,8 @@ function ensureAudio() {
   audioCtx = new AudioContext();
 
   masterGain = audioCtx.createGain();
-  masterGain.gain.value = parseInt(document.getElementById('master-vol').value) / 100 * 1.5;
+  const volDb = parseInt(document.getElementById('master-vol').value);
+  masterGain.gain.value = volDb <= -60 ? 0 : Math.pow(10, volDb / 20);
 
   softClipper = audioCtx.createWaveShaper();
   const n = 8192;
@@ -1032,7 +1033,8 @@ function triggerRelease(voice) {
 // ── VOICE SCALING ────────────────────────────────
 function updateMasterLevel() {
   if (!masterGain) return;
-  const userVol = parseInt(document.getElementById('master-vol').value) / 100 * 1.5;
+  const volDb = parseInt(document.getElementById('master-vol').value);
+  const userVol = volDb <= -60 ? 0 : Math.pow(10, volDb / 20);
   masterGain.gain.setTargetAtTime(userVol, audioCtx.currentTime, 0.015);
 }
 
@@ -1417,8 +1419,8 @@ document.getElementById('lfo-amp').addEventListener('input', () => {
 });
 
 document.getElementById('master-vol').addEventListener('input', () => {
-  const v = parseInt(document.getElementById('master-vol').value);
-  document.getElementById('vol-val').textContent = Math.round(v * 1.5) + '%';
+  const db = parseInt(document.getElementById('master-vol').value);
+  document.getElementById('vol-val').textContent = db <= -60 ? '-∞ dB' : (db > 0 ? '+' : '') + db + ' dB';
   updateMasterLevel();
 });
 
@@ -1890,7 +1892,7 @@ const DEFAULTS = {
   'osc-type': 'classic', 'wave-pos': 0, 'osc-octave': 0, 'osc-detune': 0,
   'filter-type': 'lowpass', 'filter-slope': '12', 'filter-cutoff': 870, 'filter-res': 1, 'filter-env': 0,
   'env-a': 10, 'env-d': 200, 'env-s': 70, 'env-r': 300,
-  'master-vol': 75, 'vel-sens': 50, 'voice-count': 8,
+  'master-vol': 0, 'vel-sens': 50, 'voice-count': 8,
   'delay-time': 300, 'delay-fdbk': 40, 'delay-mix': 0,
   'reverb-size': 50, 'reverb-damp': 50, 'reverb-mix': 0,
 };
