@@ -146,7 +146,8 @@ body {
 .crt-select:disabled { color: #333333; border-color: #222222; cursor: default; text-shadow: none; }
 .crt-select option { background: #0c0a02; color: #FFFFFF; }
 
-#mic-select { max-width: 280px; }
+#mic-select { max-width: 220px; }
+#output-select { max-width: 220px; }
 #file-input { display: none; }
 
 #gain-slider, #output-slider {
@@ -191,11 +192,20 @@ body {
 
     <div class="panel-row">
       <label>INPUT:</label>
-      <select id="mic-select" class="crt-select" onchange="switchDevice()">
+      <select id="mic-select" class="crt-select" style="width:130px;" onchange="switchDevice()">
         <option value="">── NO DEVICES ──</option>
       </select>
-      <button class="btn" onclick="requestAccess()" style="padding:4px 8px;font-size:11px;">⟳ DETECT</button>
-      <label style="margin-left:12px;">IN:</label>
+      <button class="btn" onclick="requestAccess()" style="padding:4px 6px;font-size:11px;" title="Detect input devices">⟳</button>
+      <label style="margin-left:8px;">OUTPUT:</label>
+      <select id="output-select" class="crt-select" style="width:130px;" onchange="setOutputDevice()">
+        <option value="">DEFAULT</option>
+      </select>
+      <button class="btn" onclick="detectOutputDevices()" style="padding:4px 6px;font-size:11px;" title="Detect output devices">⟳</button>
+      <button class="btn" id="bus-toggle" onclick="toggleBus()" style="padding:4px 8px;font-size:11px;">BUS</button>
+    </div>
+
+    <div class="panel-row">
+      <label>IN:</label>
       <input type="range" id="gain-slider" min="-12" max="24" step="1" value="0" oninput="changeGain()" ondblclick="resetGain()">
       <label id="gain-readout" style="min-width:42px;text-align:right;cursor:pointer;" ondblclick="resetGain()">0 dB</label>
       <label>OUT:</label>
@@ -1073,6 +1083,7 @@ async function populateDevices() {
 }
 
 function getDeviceName() {
+  if (busActiveSrc && busSources[busActiveSrc]) return busSources[busActiveSrc].name;
   if (!selectedDeviceId || devices.length === 0) return 'NONE';
   const d = devices.find(d => d.deviceId === selectedDeviceId);
   return d ? (d.label || 'UNKNOWN') : 'NONE';
@@ -1103,7 +1114,19 @@ async function requestAccess() {
 }
 
 async function switchDevice() {
-  selectedDeviceId = document.getElementById('mic-select').value;
+  const val = document.getElementById('mic-select').value;
+
+  if (val.startsWith('bus:')) {
+    const sourceId = val.slice(4);
+    selectedDeviceId = '';
+    await connectBusReceiver(sourceId);
+    errorMsg = '';
+    return;
+  }
+
+  disconnectBusReceiver();
+  selectedDeviceId = val;
+
   if (!audioCtx) { await initAudio(); return; }
   if (sourceNode) { sourceNode.disconnect(); sourceNode = null; }
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
@@ -1156,8 +1179,9 @@ function ensureAudioCtx() {
 function setupOutputChain() {
   if (!audioCtx) return;
   outputGainNode = audioCtx.createGain();
-  outputGainNode.gain.value = 1; // gain is baked into buffer, not applied here
-  outputGainNode.connect(audioCtx.destination);
+  outputGainNode.gain.value = 1;
+  if (!busOnly) outputGainNode.connect(audioCtx.destination);
+  if (busBroadcasterNode) connectBusSender();
   playbackSplitter = audioCtx.createChannelSplitter(2);
   playbackAnalyserL = audioCtx.createAnalyser();
   playbackAnalyserR = audioCtx.createAnalyser();
@@ -1172,8 +1196,13 @@ function setupOutputChain() {
 async function toggleRecord() {
   if (state === 'recording') return;
   if (state === 'playing') stopPlayback();
-  const ok = await initAudio();
-  if (!ok) return;
+  if (busActiveSrc) {
+    if (!audioCtx) { audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE }); setupOutputChain(); }
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+  } else {
+    const ok = await initAudio();
+    if (!ok) return;
+  }
   if (audioCtx.state === 'suspended') await audioCtx.resume();
 
   audioData = null;
@@ -2178,6 +2207,369 @@ updateButtons();
     }
   });
 });
+
+// ── OUTPUT DEVICE & BUS ─────────────────────────────────
+
+let busOnly = false;
+
+async function enumerateOutputDevices() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const sel = document.getElementById('output-select');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">DEFAULT</option>';
+    for (const d of devices) {
+      if (d.kind !== 'audiooutput') continue;
+      if (d.deviceId === 'default' || d.deviceId === '') continue;
+      const opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label || ('Output ' + d.deviceId.slice(0, 8));
+      sel.appendChild(opt);
+    }
+    if (current) sel.value = current;
+  } catch(e) {}
+}
+
+async function detectOutputDevices() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(t => t.stop());
+  } catch(e) {}
+  await enumerateOutputDevices();
+}
+
+async function setOutputDevice() {
+  if (!audioCtx) return;
+  if (busOnly) return;
+  const val = document.getElementById('output-select').value;
+  try {
+    if (audioCtx.setSinkId) await audioCtx.setSinkId(val || '');
+  } catch(e) {}
+}
+
+async function toggleBus() {
+  busOnly = !busOnly;
+  const btn = document.getElementById('bus-toggle');
+  btn.classList.toggle('loop-active', busOnly);
+  if (!audioCtx || !outputGainNode) return;
+  if (busOnly) {
+    try { outputGainNode.disconnect(audioCtx.destination); } catch(e) {}
+    await initBusBroadcaster();
+    connectBusSender();
+  } else {
+    disconnectBusSender();
+    try { outputGainNode.connect(audioCtx.destination); } catch(e) {}
+    setOutputDevice();
+  }
+}
+
+navigator.mediaDevices?.addEventListener('devicechange', () => enumerateOutputDevices());
+
+// ── AUDIO BUS (cross-tab routing) ─────────────────────
+
+const BUS_BUFFER_SIZE = 8192;
+const BUS_ID = 'edit_' + Math.random().toString(36).slice(2, 8);
+const BUS_NAME = 'BB EDIT';
+let busChannel = null;
+const busSources = {};
+let busReceiverNode = null;
+let busActiveSrc = null;
+let busBroadcasterNode = null;
+let busSAB = null;
+let busSubscribers = new Set();
+let busWorkletReady = false;
+
+const busReceiverSABCode = `
+class BusReceiverSAB extends AudioWorkletProcessor {
+  constructor(options) {
+    super();
+    const { sab, bufferSize } = options.processorOptions;
+    this.indices = new Int32Array(sab, 0, 4);
+    this.samples = new Float32Array(sab, 16);
+    this.bufferSize = bufferSize;
+  }
+  process(inputs, outputs) {
+    const output = outputs[0][0];
+    if (!output) return true;
+    const writeIdx = Atomics.load(this.indices, 0);
+    const readIdx = Atomics.load(this.indices, 1);
+    let available = (writeIdx - readIdx + this.bufferSize) % this.bufferSize;
+    if (available >= output.length) {
+      for (let i = 0; i < output.length; i++) {
+        output[i] = this.samples[(readIdx + i) % this.bufferSize];
+      }
+      Atomics.store(this.indices, 1, (readIdx + output.length) % this.bufferSize);
+    }
+    return true;
+  }
+}
+registerProcessor('bus-receiver-sab', BusReceiverSAB);
+`;
+
+const busReceiverMPCode = `
+class BusReceiverMP extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.ring = new Float32Array(8192);
+    this.writeIdx = 0;
+    this.readIdx = 0;
+    this.bufferSize = 8192;
+    this.port.onmessage = (e) => {
+      const data = e.data;
+      for (let i = 0; i < data.length; i++) {
+        this.ring[(this.writeIdx + i) % this.bufferSize] = data[i];
+      }
+      this.writeIdx = (this.writeIdx + data.length) % this.bufferSize;
+    };
+  }
+  process(inputs, outputs) {
+    const output = outputs[0][0];
+    if (!output) return true;
+    let available = (this.writeIdx - this.readIdx + this.bufferSize) % this.bufferSize;
+    if (available >= output.length) {
+      for (let i = 0; i < output.length; i++) {
+        output[i] = this.ring[(this.readIdx + i) % this.bufferSize];
+      }
+      this.readIdx = (this.readIdx + output.length) % this.bufferSize;
+    }
+    return true;
+  }
+}
+registerProcessor('bus-receiver-mp', BusReceiverMP);
+`;
+
+const busSenderSABCode = `
+class BusSenderSAB extends AudioWorkletProcessor {
+  constructor(options) {
+    super();
+    const { sab, bufferSize } = options.processorOptions;
+    this.indices = new Int32Array(sab, 0, 4);
+    this.samples = new Float32Array(sab, 16);
+    this.bufferSize = bufferSize;
+  }
+  process(inputs) {
+    const input = inputs[0][0];
+    if (!input) return true;
+    const writeIdx = Atomics.load(this.indices, 0);
+    for (let i = 0; i < input.length; i++) {
+      this.samples[(writeIdx + i) % this.bufferSize] = input[i];
+    }
+    Atomics.store(this.indices, 0, (writeIdx + input.length) % this.bufferSize);
+    return true;
+  }
+}
+registerProcessor('bus-sender-sab', BusSenderSAB);
+`;
+
+const busSenderMPCode = `
+class BusSenderMP extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.active = false;
+    this.port.onmessage = (e) => { this.active = e.data.active; };
+  }
+  process(inputs) {
+    const input = inputs[0][0];
+    if (!input || !this.active) return true;
+    const copy = new Float32Array(input.length);
+    copy.set(input);
+    this.port.postMessage(copy, [copy.buffer]);
+    return true;
+  }
+}
+registerProcessor('bus-sender-mp', BusSenderMP);
+`;
+
+async function initBusWorklets() {
+  if (busWorkletReady || !audioCtx) return;
+  const useSAB = typeof SharedArrayBuffer !== 'undefined' && crossOriginIsolated;
+  const recvCode = useSAB ? busReceiverSABCode : busReceiverMPCode;
+  const sendCode = useSAB ? busSenderSABCode : busSenderMPCode;
+  const blob1 = new Blob([recvCode], { type: 'application/javascript' });
+  const blob2 = new Blob([sendCode], { type: 'application/javascript' });
+  const url1 = URL.createObjectURL(blob1);
+  const url2 = URL.createObjectURL(blob2);
+  await audioCtx.audioWorklet.addModule(url1);
+  await audioCtx.audioWorklet.addModule(url2);
+  URL.revokeObjectURL(url1);
+  URL.revokeObjectURL(url2);
+  busWorkletReady = true;
+}
+
+async function initBusBroadcaster() {
+  if (!audioCtx || busBroadcasterNode) return;
+  await initBusWorklets();
+  const useSAB = typeof SharedArrayBuffer !== 'undefined' && crossOriginIsolated;
+  if (useSAB) {
+    const byteLength = 16 + BUS_BUFFER_SIZE * 4;
+    busSAB = new SharedArrayBuffer(byteLength);
+    const indices = new Int32Array(busSAB, 0, 4);
+    Atomics.store(indices, 0, 0);
+    Atomics.store(indices, 1, 0);
+    Atomics.store(indices, 2, BUS_BUFFER_SIZE);
+    Atomics.store(indices, 3, 1);
+    busBroadcasterNode = new AudioWorkletNode(audioCtx, 'bus-sender-sab', {
+      processorOptions: { sab: busSAB, bufferSize: BUS_BUFFER_SIZE }
+    });
+  } else {
+    busBroadcasterNode = new AudioWorkletNode(audioCtx, 'bus-sender-mp');
+    busBroadcasterNode.port.onmessage = (e) => {
+      if (busSubscribers.size > 0 && busChannel) {
+        busChannel.postMessage({ type: 'audio', id: BUS_ID, samples: e.data });
+      }
+    };
+  }
+}
+
+function connectBusSender() {
+  if (!outputGainNode || !busBroadcasterNode) return;
+  try { outputGainNode.connect(busBroadcasterNode); } catch(e) {}
+}
+
+function disconnectBusSender() {
+  if (!busBroadcasterNode) return;
+  try { outputGainNode.disconnect(busBroadcasterNode); } catch(e) {}
+}
+
+async function connectBusReceiver(sourceId) {
+  disconnectBusReceiver();
+  const src = busSources[sourceId];
+  if (!src) return;
+  if (!audioCtx) {
+    audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
+    setupOutputChain();
+  }
+  await initBusWorklets();
+  const useSAB = src.sab && typeof SharedArrayBuffer !== 'undefined' && crossOriginIsolated;
+  if (useSAB) {
+    busReceiverNode = new AudioWorkletNode(audioCtx, 'bus-receiver-sab', {
+      processorOptions: { sab: src.sab, bufferSize: BUS_BUFFER_SIZE },
+      outputChannelCount: [1]
+    });
+  } else {
+    busReceiverNode = new AudioWorkletNode(audioCtx, 'bus-receiver-mp', {
+      outputChannelCount: [1]
+    });
+    if (busChannel) busChannel.postMessage({ type: 'subscribe', subscriberId: BUS_ID, sourceId: sourceId });
+  }
+  busActiveSrc = sourceId;
+
+  if (sourceNode) { sourceNode.disconnect(); sourceNode = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+
+  if (!inputGainNode) {
+    const gainDb = parseFloat(document.getElementById('gain-slider').value);
+    inputGainNode = audioCtx.createGain();
+    inputGainNode.gain.value = Math.pow(10, gainDb / 20);
+  }
+  if (!processorNode) {
+    processorNode = audioCtx.createScriptProcessor(BUFFER_SIZE, 2, 2);
+    processorNode.onaudioprocess = onAudioProcess;
+    silentGain = audioCtx.createGain();
+    silentGain.gain.value = 0;
+    processorNode.connect(silentGain);
+    silentGain.connect(audioCtx.destination);
+  }
+
+  busReceiverNode.connect(inputGainNode);
+  inputGainNode.connect(processorNode);
+}
+
+function disconnectBusReceiver() {
+  if (busReceiverNode) {
+    try { busReceiverNode.disconnect(); } catch(e) {}
+    busReceiverNode = null;
+  }
+  if (busActiveSrc) {
+    if (busChannel) busChannel.postMessage({ type: 'unsubscribe', subscriberId: BUS_ID, sourceId: busActiveSrc });
+    busActiveSrc = null;
+  }
+}
+
+function updateBusInputOptions() {
+  const sel = document.getElementById('mic-select');
+  sel.querySelectorAll('option[data-bus]').forEach(o => o.remove());
+  for (const id in busSources) {
+    if (id === BUS_ID) continue;
+    const opt = document.createElement('option');
+    opt.value = 'bus:' + id;
+    opt.textContent = busSources[id].name;
+    opt.setAttribute('data-bus', 'true');
+    sel.appendChild(opt);
+  }
+}
+
+function initBusChannel() {
+  if (busChannel) return;
+  busChannel = new BroadcastChannel('bb-audio-bus');
+
+  const announce = () => {
+    busChannel.postMessage({
+      type: 'announce', id: BUS_ID, name: BUS_NAME,
+      sab: busSAB || null
+    });
+  };
+
+  busChannel.onmessage = (e) => {
+    const msg = e.data;
+    if (msg.type === 'announce' || msg.type === 'heartbeat') {
+      if (msg.id === BUS_ID) return;
+      const isNew = !busSources[msg.id];
+      busSources[msg.id] = { id: msg.id, name: msg.name, ts: Date.now(), sab: msg.sab || null };
+      if (isNew) updateBusInputOptions();
+    } else if (msg.type === 'leave') {
+      delete busSources[msg.id];
+      updateBusInputOptions();
+      if (busActiveSrc === msg.id) {
+        disconnectBusReceiver();
+        document.getElementById('mic-select').value = '';
+      }
+    } else if (msg.type === 'discover') {
+      announce();
+    } else if (msg.type === 'subscribe' && msg.sourceId === BUS_ID) {
+      busSubscribers.add(msg.subscriberId);
+      if (busBroadcasterNode && busBroadcasterNode.port) {
+        busBroadcasterNode.port.postMessage({ active: true });
+      }
+    } else if (msg.type === 'unsubscribe' && msg.sourceId === BUS_ID) {
+      busSubscribers.delete(msg.subscriberId);
+      if (busSubscribers.size === 0 && busBroadcasterNode && busBroadcasterNode.port) {
+        busBroadcasterNode.port.postMessage({ active: false });
+      }
+    } else if (msg.type === 'audio' && msg.id === busActiveSrc) {
+      if (busReceiverNode && busReceiverNode.port) {
+        busReceiverNode.port.postMessage(msg.samples);
+      }
+    }
+  };
+
+  announce();
+  setInterval(announce, 3000);
+
+  setInterval(() => {
+    const now = Date.now();
+    let changed = false;
+    for (const id in busSources) {
+      if (now - busSources[id].ts > 6000) {
+        delete busSources[id];
+        changed = true;
+        if (busActiveSrc === id) {
+          disconnectBusReceiver();
+          document.getElementById('mic-select').value = '';
+        }
+      }
+    }
+    if (changed) updateBusInputOptions();
+  }, 3000);
+
+  busChannel.postMessage({ type: 'discover' });
+
+  window.addEventListener('beforeunload', () => {
+    busChannel.postMessage({ type: 'leave', id: BUS_ID });
+  });
+}
+
+initBusChannel();
 
 // ── MOBILE SCALING ───────────────────────────────
 function scaleCrt() {
