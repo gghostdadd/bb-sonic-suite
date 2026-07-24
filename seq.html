@@ -190,13 +190,13 @@ body {
   <div id="display-wrap">
   <pre id="display"></pre>
   <div id="control-panel">
-    <div class="panel-row">
+    <div class="panel-row" style="flex-wrap:nowrap;">
       <label>IN:</label>
-      <select id="midi-in-select" class="crt-select" onchange="switchInput()">
+      <select id="midi-in-select" class="crt-select" style="width:100px;" onchange="switchInput()">
         <option value="">── NONE ──</option>
       </select>
       <label>OUT:</label>
-      <select id="midi-out-select" class="crt-select" onchange="switchOutput()">
+      <select id="midi-out-select" class="crt-select" style="width:100px;" onchange="switchOutput()">
         <option value="">── NONE ──</option>
       </select>
       <button class="btn" onclick="requestMidi()" style="padding:4px 6px;font-size:11px;">⟳</button>
