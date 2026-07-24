@@ -200,6 +200,7 @@ body {
         <option value="">── NONE ──</option>
       </select>
       <button class="btn" onclick="requestMidi()" style="padding:4px 6px;font-size:11px;">⟳</button>
+      <button class="btn" id="btn-thru" onclick="toggleThru()" style="padding:4px 8px;font-size:11px;">THRU</button>
     </div>
 
     <div class="panel-row">
@@ -265,6 +266,7 @@ let undoStack = []; // previous sequence states for undo
 // Transport
 let state = 'idle'; // idle | recording | playing | overdubbing
 let loopEnabled = true;
+let thruEnabled = true;
 let loopLengthMs = 0;
 let transportStartTime = 0; // performance.now() when transport started
 let transportOffset = 0;    // ms offset into loop
@@ -495,6 +497,7 @@ function render() {
   // Tags
   const tags = [];
   if (loopEnabled) tags.push('[LOOP]');
+  if (thruEnabled) tags.push('[THRU]');
   if (transpose !== 0) tags.push('[' + (transpose > 0 ? '+' : '') + transpose + 'ST]');
   if (recordedSpeed !== 100) tags.push('[REC@' + recordedSpeed + '%]');
   const tagsStr = tags.length > 0 ? '  ' + tags.join(' ') : '';
@@ -712,8 +715,8 @@ function onMidiMessage(e) {
   // Ignore clock/active sensing/sysex
   if (status >= 0xF0) return;
 
-  // MIDI thru: always pass input to output
-  sendMidi(data);
+  // MIDI thru: pass input to output when enabled
+  if (thruEnabled) sendMidi(data);
 
   // Update display for notes and CCs
   const type = status & 0xF0;
@@ -1073,6 +1076,11 @@ function toggleLoop() {
   document.getElementById('btn-loop').classList.toggle('loop-active', loopEnabled);
 }
 
+function toggleThru() {
+  thruEnabled = !thruEnabled;
+  document.getElementById('btn-thru').classList.toggle('loop-active', thruEnabled);
+}
+
 // ── ERASE ─────────────────────────────────────────
 function eraseTape() {
   if (state === 'recording' || state === 'playing' || state === 'overdubbing') return;
@@ -1246,6 +1254,7 @@ document.querySelectorAll('select, input[type="range"]').forEach(el => {
 // ── INIT ──────────────────────────────────────────
 if (!navigator.requestMIDIAccess) { midiSupported = false; errorMsg = '?ERR: WEB MIDI NOT SUPPORTED'; }
 updateButtons();
+document.getElementById('btn-thru').classList.add('loop-active');
 requestAnimationFrame(render);
 requestMidi();
 
