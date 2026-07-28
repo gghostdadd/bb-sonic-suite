@@ -8,7 +8,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  background: #0a0800;
+  background: #000000;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -333,7 +333,10 @@ body {
         <div class="pitch-slider-outer">
           <input type="range" id="pitch-slider" min="-12" max="12" step="0.1" value="0" oninput="changePitch()" ondblclick="resetPitch()">
         </div>
-        <label class="knob-value" id="pitch-val">0.0%</label>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <label class="knob-value" id="pitch-val">0.0%</label>
+          <button class="btn" id="btn-keylock" onclick="toggleKeylock()" style="padding:1px 4px;font-size:9px;line-height:1;" title="Key Lock">♪</button>
+        </div>
         <div class="nudge-row">
           <button class="btn nudge-btn" id="btn-nudge-down">−</button>
           <button class="btn nudge-btn" id="btn-nudge-up">+</button>
@@ -380,7 +383,7 @@ body {
       <button class="btn" id="btn-load" onclick="document.getElementById('file-input').click()">⤒ LOAD</button>
       <input type="file" id="file-input" accept="audio/*" onchange="loadFile(event)" style="display:none;">
       <button class="btn" id="btn-play" onclick="togglePlay()" disabled>► PLAY</button>
-      <button class="btn" id="btn-cue" onclick="goToCue()" disabled>◆ CUE</button>
+      <button class="btn" id="btn-cue" disabled>◆ CUE</button>
     </div>
 
     <div class="panel-row">
@@ -415,7 +418,9 @@ body {
 // ── STATE ─────────────────────────────────────────
 let audioCtx = null;
 let audioBuffer = null;
-let playSource = null;
+let audioElement = null;
+let mediaSourceNode = null;
+let fileObjectUrl = null;
 let outputGainNode = null;
 let trimGainNode = null;
 let bassFilter = null;
@@ -424,10 +429,9 @@ let trebleFilter = null;
 let state = 'idle'; // idle | playing | paused
 let fileName = '';
 let fileDuration = 0;
-let playStartTime = 0;
-let playOffset = 0;
 let cuePoint = 0;
 let pitchRate = 1.0;
+let keylockOn = false;
 
 let waveformData = null;
 const DISPLAY_W = 36;
@@ -510,10 +514,8 @@ function render() {
 }
 
 function getCurrentPos() {
-  if (state === 'playing' && audioCtx) {
-    return playOffset + (audioCtx.currentTime - playStartTime) * pitchRate;
-  }
-  return playOffset;
+  if (audioElement && audioElement.src) return audioElement.currentTime;
+  return 0;
 }
 
 // ── WAVEFORM ──────────────────────────────────────
@@ -596,6 +598,16 @@ function ensureAudioCtx() {
     trimGainNode.connect(bassFilter);
     bassFilter.connect(trebleFilter);
     trebleFilter.connect(outputGainNode);
+
+    audioElement = document.createElement('audio');
+    audioElement.preservesPitch = false;
+    mediaSourceNode = audioCtx.createMediaElementSource(audioElement);
+    mediaSourceNode.connect(trimGainNode);
+
+    audioElement.addEventListener('ended', () => {
+      state = 'idle';
+      updateButtons();
+    });
   }
 }
 
@@ -608,12 +620,17 @@ async function loadFile(e) {
     ensureAudioCtx();
     const arrayBuf = await file.arrayBuffer();
     audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
+    buildWaveformData();
+
+    if (fileObjectUrl) URL.revokeObjectURL(fileObjectUrl);
+    fileObjectUrl = URL.createObjectURL(file);
+    audioElement.src = fileObjectUrl;
+    audioElement.playbackRate = pitchRate;
+
     fileName = file.name;
     fileDuration = audioBuffer.duration;
-    playOffset = 0;
     cuePoint = 0;
     state = 'idle';
-    buildWaveformData();
     updateButtons();
   } catch (err) {
     fileName = '?ERR: ' + (err.message || 'UNSUPPORTED');
@@ -632,61 +649,66 @@ function togglePlay() {
 }
 
 function playAudio() {
-  if (!audioBuffer) return;
-  stopPlayback();
+  if (!audioElement || !audioElement.src) return;
   ensureAudioCtx();
   if (audioCtx.state === 'suspended') audioCtx.resume();
 
-  playSource = audioCtx.createBufferSource();
-  playSource.buffer = audioBuffer;
-  playSource.playbackRate.value = pitchRate;
-  playSource.connect(trimGainNode);
-
-  playSource.onended = () => {
-    if (state === 'playing') {
-      playOffset = 0;
-      state = 'idle';
-      updateButtons();
-    }
-  };
-
-  if (playOffset >= fileDuration) playOffset = 0;
-  playSource.start(0, playOffset);
-  playStartTime = audioCtx.currentTime;
+  if (audioElement.currentTime >= fileDuration) audioElement.currentTime = 0;
+  audioElement.playbackRate = pitchRate;
+  audioElement.play();
   state = 'playing';
   updateButtons();
 }
 
 function pauseAudio() {
   if (state !== 'playing') return;
-  playOffset = getCurrentPos();
-  stopPlayback();
+  audioElement.pause();
   state = 'paused';
   updateButtons();
 }
 
 function stopAudio() {
-  playOffset = cuePoint;
-  stopPlayback();
-  state = audioBuffer ? 'idle' : 'idle';
+  if (audioElement) {
+    audioElement.pause();
+    audioElement.currentTime = cuePoint;
+  }
+  state = 'idle';
   updateButtons();
 }
 
 function stopPlayback() {
-  if (playSource) {
-    try { playSource.onended = null; playSource.stop(); } catch(e) {}
-    playSource = null;
+  if (audioElement) audioElement.pause();
+}
+
+let cueHeld = false;
+
+function goToCue() {
+  if (!audioElement || !audioElement.src) return;
+  if (state === 'playing') {
+    audioElement.pause();
+    audioElement.currentTime = cuePoint;
+    state = 'paused';
+    updateButtons();
+  } else if (state === 'paused' || state === 'idle') {
+    cuePoint = audioElement.currentTime;
+    cueHeld = true;
+    ensureAudioCtx();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    audioElement.playbackRate = pitchRate;
+    audioElement.play();
+    state = 'playing';
+    updateButtons();
   }
 }
 
-function goToCue() {
-  if (!audioBuffer) return;
+function releaseCue() {
+  if (!cueHeld) return;
+  cueHeld = false;
   if (state === 'playing') {
-    cuePoint = getCurrentPos();
-    pauseAudio();
-    playOffset = cuePoint;
-  } else {
-    playOffset = cuePoint;
+    audioElement.pause();
+    audioElement.currentTime = cuePoint;
+    state = 'paused';
+    updateButtons();
   }
 }
 
@@ -696,17 +718,12 @@ function goToCue() {
   let seeking = false;
 
   function seek(x) {
-    if (!audioBuffer) return;
+    if (!audioElement || !audioElement.src) return;
     const rect = canvas.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (x - rect.left) / rect.width));
-    const newPos = ratio * fileDuration;
-    if (state === 'playing') {
-      stopPlayback();
-      playOffset = newPos;
-      playAudio();
-    } else {
-      playOffset = newPos;
-      state = audioBuffer ? 'paused' : 'idle';
+    audioElement.currentTime = ratio * fileDuration;
+    if (state !== 'playing') {
+      state = 'paused';
       updateButtons();
     }
   }
@@ -726,7 +743,7 @@ function changePitch() {
   pitchRate = 1 + pct / 100;
   const label = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
   document.getElementById('pitch-val').textContent = label;
-  if (playSource) playSource.playbackRate.value = pitchRate;
+  if (audioElement) audioElement.playbackRate = pitchRate;
 }
 
 function resetPitch() {
@@ -734,24 +751,45 @@ function resetPitch() {
   changePitch();
 }
 
+function toggleKeylock() {
+  keylockOn = !keylockOn;
+  if (audioElement) audioElement.preservesPitch = keylockOn;
+  const btn = document.getElementById('btn-keylock');
+  btn.textContent = keylockOn ? '♪' : '♪';
+  btn.classList.toggle('loop-active', keylockOn);
+}
+
 // ── NUDGE ──────────────────────────────────────────
 const NUDGE_PCT = 8;
 const NUDGE_RAMP = 0.25;
+let nudgeAnimId = null;
+let nudgeTargetRate = null;
+let nudgeFromRate = null;
+let nudgeStartMs = null;
 
 function nudgeStart(direction) {
-  if (!playSource || !audioCtx) return;
-  const offset = direction * (NUDGE_PCT / 100);
-  const target = pitchRate + offset;
-  playSource.playbackRate.cancelScheduledValues(audioCtx.currentTime);
-  playSource.playbackRate.setValueAtTime(playSource.playbackRate.value, audioCtx.currentTime);
-  playSource.playbackRate.linearRampToValueAtTime(target, audioCtx.currentTime + NUDGE_RAMP);
+  if (!audioElement) return;
+  if (nudgeAnimId) cancelAnimationFrame(nudgeAnimId);
+  nudgeTargetRate = pitchRate + direction * (NUDGE_PCT / 100);
+  nudgeFromRate = audioElement.playbackRate;
+  nudgeStartMs = performance.now();
+  nudgeAnimate();
+}
+
+function nudgeAnimate() {
+  const t = Math.min((performance.now() - nudgeStartMs) / (NUDGE_RAMP * 1000), 1);
+  audioElement.playbackRate = nudgeFromRate + (nudgeTargetRate - nudgeFromRate) * t;
+  if (t < 1) nudgeAnimId = requestAnimationFrame(nudgeAnimate);
+  else nudgeAnimId = null;
 }
 
 function nudgeEnd() {
-  if (!playSource || !audioCtx) return;
-  playSource.playbackRate.cancelScheduledValues(audioCtx.currentTime);
-  playSource.playbackRate.setValueAtTime(playSource.playbackRate.value, audioCtx.currentTime);
-  playSource.playbackRate.linearRampToValueAtTime(pitchRate, audioCtx.currentTime + NUDGE_RAMP);
+  if (!audioElement) return;
+  if (nudgeAnimId) cancelAnimationFrame(nudgeAnimId);
+  nudgeTargetRate = pitchRate;
+  nudgeFromRate = audioElement.playbackRate;
+  nudgeStartMs = performance.now();
+  nudgeAnimate();
 }
 
 (function initNudge() {
@@ -765,6 +803,14 @@ function nudgeEnd() {
 
   document.addEventListener('mouseup', nudgeEnd);
   document.addEventListener('touchend', nudgeEnd);
+})();
+
+(function initCue() {
+  const btnCue = document.getElementById('btn-cue');
+  btnCue.addEventListener('mousedown', (e) => { e.preventDefault(); goToCue(); });
+  btnCue.addEventListener('touchstart', (e) => { e.preventDefault(); goToCue(); }, { passive: false });
+  document.addEventListener('mouseup', releaseCue);
+  document.addEventListener('touchend', releaseCue);
 })();
 
 // ── KNOBS ─────────────────────────────────────────
@@ -1111,6 +1157,20 @@ document.querySelectorAll('select, input[type="range"]').forEach(el => {
   el.addEventListener('change', () => el.blur());
 });
 
+// ── KEYBOARD ─────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.repeat) return;
+  if (e.key === 'q') goToCue();
+  else if (e.key === 'w') togglePlay();
+  else if (e.key === 't') nudgeStart(-1);
+  else if (e.key === 'y') nudgeStart(1);
+});
+document.addEventListener('keyup', (e) => {
+  if (e.key === 'q') releaseCue();
+  else if (e.key === 't' || e.key === 'y') nudgeEnd();
+});
+
 // ── DRAG & DROP ──────────────────────────────────
 (() => {
   const crt = document.getElementById('crt');
@@ -1128,12 +1188,17 @@ async function loadDroppedFile(file) {
     ensureAudioCtx();
     const arrayBuf = await file.arrayBuffer();
     audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
+    buildWaveformData();
+
+    if (fileObjectUrl) URL.revokeObjectURL(fileObjectUrl);
+    fileObjectUrl = URL.createObjectURL(file);
+    audioElement.src = fileObjectUrl;
+    audioElement.playbackRate = pitchRate;
+
     fileName = file.name;
     fileDuration = audioBuffer.duration;
-    playOffset = 0;
     cuePoint = 0;
     state = 'idle';
-    buildWaveformData();
     updateButtons();
   } catch (err) {
     fileName = '?ERR: ' + (err.message || 'UNSUPPORTED');
@@ -1305,6 +1370,7 @@ function triggerAction(actionId) {
 
 function releaseAction(actionId) {
   if (actionId === 'nudge-down' || actionId === 'nudge-up') nudgeEnd();
+  else if (actionId === 'cue') releaseCue();
 }
 
 function showMidiPopup(type, id, x, y) {
