@@ -641,6 +641,11 @@ async function loadFile(e) {
 }
 
 function togglePlay() {
+  if (cueHeld) {
+    cueHeld = false;
+    updateButtons();
+    return;
+  }
   if (state === 'playing') {
     stopAudio();
   } else {
@@ -917,9 +922,14 @@ function updateButtons() {
   btnPlay.disabled = !has;
   btnCue.disabled = !has;
 
-  if (state === 'playing') {
+  if (cueHeld) {
+    btnCue.textContent = '► CUE';
+    btnPlay.textContent = '► PLAY';
+  } else if (state === 'playing') {
+    btnCue.textContent = '◆ CUE';
     btnPlay.textContent = '■ STOP';
   } else {
+    btnCue.textContent = '◆ CUE';
     btnPlay.textContent = '► PLAY';
   }
 }
