@@ -183,7 +183,7 @@ body {
 }
 .pitch-slider-outer {
   width: 22px;
-  height: 174px;
+  height: 134px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -191,8 +191,8 @@ body {
 #pitch-slider {
   -webkit-appearance: none;
   appearance: none;
-  width: 174px;
-  min-width: 174px;
+  width: 134px;
+  min-width: 134px;
   height: 4px;
   background: #333;
   outline: none;
@@ -217,6 +217,16 @@ body {
   cursor: grab;
   border: none;
   border-radius: 0;
+}
+
+.nudge-row {
+  display: flex;
+  gap: 4px;
+}
+.nudge-btn {
+  font-size: 11px !important;
+  padding: 3px 8px !important;
+  min-width: 24px;
 }
 
 /* ── WAVEFORM ────────────────────────── */
@@ -324,6 +334,10 @@ body {
           <input type="range" id="pitch-slider" min="-12" max="12" step="0.1" value="0" oninput="changePitch()" ondblclick="resetPitch()">
         </div>
         <label class="knob-value" id="pitch-val">0.0%</label>
+        <div class="nudge-row">
+          <button class="btn nudge-btn" id="btn-nudge-down">−</button>
+          <button class="btn nudge-btn" id="btn-nudge-up">+</button>
+        </div>
       </div>
     </div>
 
@@ -719,6 +733,39 @@ function resetPitch() {
   document.getElementById('pitch-slider').value = 0;
   changePitch();
 }
+
+// ── NUDGE ──────────────────────────────────────────
+const NUDGE_PCT = 8;
+const NUDGE_RAMP = 0.25;
+
+function nudgeStart(direction) {
+  if (!playSource || !audioCtx) return;
+  const offset = direction * (NUDGE_PCT / 100);
+  const target = pitchRate + offset;
+  playSource.playbackRate.cancelScheduledValues(audioCtx.currentTime);
+  playSource.playbackRate.setValueAtTime(playSource.playbackRate.value, audioCtx.currentTime);
+  playSource.playbackRate.linearRampToValueAtTime(target, audioCtx.currentTime + NUDGE_RAMP);
+}
+
+function nudgeEnd() {
+  if (!playSource || !audioCtx) return;
+  playSource.playbackRate.cancelScheduledValues(audioCtx.currentTime);
+  playSource.playbackRate.setValueAtTime(playSource.playbackRate.value, audioCtx.currentTime);
+  playSource.playbackRate.linearRampToValueAtTime(pitchRate, audioCtx.currentTime + NUDGE_RAMP);
+}
+
+(function initNudge() {
+  const btnDown = document.getElementById('btn-nudge-down');
+  const btnUp = document.getElementById('btn-nudge-up');
+
+  btnDown.addEventListener('mousedown', (e) => { e.preventDefault(); nudgeStart(-1); });
+  btnDown.addEventListener('touchstart', (e) => { e.preventDefault(); nudgeStart(-1); }, { passive: false });
+  btnUp.addEventListener('mousedown', (e) => { e.preventDefault(); nudgeStart(1); });
+  btnUp.addEventListener('touchstart', (e) => { e.preventDefault(); nudgeStart(1); }, { passive: false });
+
+  document.addEventListener('mouseup', nudgeEnd);
+  document.addEventListener('touchend', nudgeEnd);
+})();
 
 // ── KNOBS ─────────────────────────────────────────
 const KNOB_MIN_ANGLE = -135;
@@ -1175,6 +1222,10 @@ function onMidiMessage(e) {
     if (noteToAction[data1]) {
       for (const aid of noteToAction[data1]) triggerAction(aid);
     }
+  } else if (cmd === 0x80 || (cmd === 0x90 && data2 === 0)) {
+    if (noteToAction[data1]) {
+      for (const aid of noteToAction[data1]) releaseAction(aid);
+    }
   }
 }
 
@@ -1248,6 +1299,12 @@ function applyCCValue(paramId, ccVal) {
 function triggerAction(actionId) {
   if (actionId === 'play') togglePlay();
   else if (actionId === 'cue') goToCue();
+  else if (actionId === 'nudge-down') nudgeStart(-1);
+  else if (actionId === 'nudge-up') nudgeStart(1);
+}
+
+function releaseAction(actionId) {
+  if (actionId === 'nudge-down' || actionId === 'nudge-up') nudgeEnd();
 }
 
 function showMidiPopup(type, id, x, y) {
@@ -1350,6 +1407,14 @@ document.getElementById('btn-play').addEventListener('contextmenu', (e) => {
 document.getElementById('btn-cue').addEventListener('contextmenu', (e) => {
   e.preventDefault();
   showMidiPopup('note', 'cue', e.clientX, e.clientY);
+});
+document.getElementById('btn-nudge-down').addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  showMidiPopup('note', 'nudge-down', e.clientX, e.clientY);
+});
+document.getElementById('btn-nudge-up').addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  showMidiPopup('note', 'nudge-up', e.clientX, e.clientY);
 });
 
 detectMidi();
