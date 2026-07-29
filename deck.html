@@ -1258,7 +1258,8 @@ let busOnly = false;
 let cueListening = false;
 let cueDeviceId = '';
 let pflDestNode = null;
-let pflElement = null;
+let pflCtx = null;
+let pflGainNode = null;
 
 async function enumerateOutputDevices() {
   try {
@@ -1308,33 +1309,40 @@ function ensurePflNode() {
   if (pflDestNode || !audioCtx) return;
   pflDestNode = audioCtx.createMediaStreamDestination();
   trebleFilter.connect(pflDestNode);
-  pflElement = document.createElement('audio');
-  pflElement.srcObject = pflDestNode.stream;
-  pflElement.muted = true;
+}
+
+async function initPflCtx() {
+  if (pflCtx) return;
+  ensurePflNode();
+  if (!pflDestNode) return;
+  pflCtx = new AudioContext();
+  if (pflCtx.setSinkId && cueDeviceId) {
+    try { await pflCtx.setSinkId(cueDeviceId); } catch(e) {}
+  }
+  const src = pflCtx.createMediaStreamSource(pflDestNode.stream);
+  pflGainNode = pflCtx.createGain();
+  pflGainNode.gain.value = 0;
+  src.connect(pflGainNode);
+  pflGainNode.connect(pflCtx.destination);
 }
 
 async function setCueDevice() {
   cueDeviceId = document.getElementById('cue-select').value;
   if (!cueDeviceId) return;
-  ensurePflNode();
-  if (pflElement && pflElement.setSinkId) {
-    try { await pflElement.setSinkId(cueDeviceId); } catch(e) {}
+  if (pflCtx && pflCtx.setSinkId) {
+    try { await pflCtx.setSinkId(cueDeviceId); } catch(e) {}
   }
 }
 
-function toggleCueOut() {
+async function toggleCueOut() {
   if (!cueDeviceId) return;
-  ensurePflNode();
+  await initPflCtx();
   cueListening = !cueListening;
   const btn = document.getElementById('cue-toggle');
   btn.classList.toggle('loop-active', cueListening);
-  if (!pflElement) return;
-  if (cueListening) {
-    pflElement.muted = false;
-    pflElement.play().catch(() => {});
-  } else {
-    pflElement.muted = true;
-  }
+  if (!pflGainNode || !pflCtx) return;
+  if (pflCtx.state === 'suspended') pflCtx.resume();
+  pflGainNode.gain.setValueAtTime(cueListening ? 1 : 0, pflCtx.currentTime);
 }
 
 async function toggleBus() {
