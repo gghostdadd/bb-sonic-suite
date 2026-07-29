@@ -545,7 +545,8 @@ function render() {
   const pitchPct = ((pitchRate - 1) * 100).toFixed(1);
   const pitchStr = (pitchRate >= 1 ? '+' : '') + pitchPct + '%';
 
-  const bpmStr = fileBPM ? fileBPM + ' BPM' : '---';
+  const effectiveBPM = fileBPM ? (parseFloat(fileBPM) * pitchRate).toFixed(1) : '';
+  const bpmStr = effectiveBPM ? effectiveBPM + ' BPM' : '---';
   lines.push(lpad2('BPM:    ' + bpmStr, 'REM: ' + fmtTime(remain)));
   lines.push(lpad2('POS:    ' + fmtTime(pos), 'PITCH: ' + pitchStr));
   lines.push(lpad('CUE:    ' + fmtTime(cuePoint)));
