@@ -331,7 +331,7 @@ body {
       <div class="pitch-wrap" style="margin-top:8px;flex:1;justify-content:space-between;">
         <label class="knob-label">PITCH</label>
         <div class="pitch-slider-outer">
-          <input type="range" id="pitch-slider" min="-12" max="12" step="0.1" value="0" oninput="changePitch()" ondblclick="resetPitch()">
+          <input type="range" id="pitch-slider" min="-12" max="12" step="0.1" value="0" oninput="changePitch()">
         </div>
         <div style="display:flex;align-items:center;gap:4px;">
           <label class="knob-value" id="pitch-val">0.0%</label>
@@ -362,7 +362,10 @@ body {
         </div>
       </div>
 
-      <canvas id="waveform-canvas" width="220" height="80"></canvas>
+      <div style="position:relative;display:inline-block;">
+        <canvas id="waveform-canvas" width="220" height="80"></canvas>
+        <button class="btn" id="waveform-zoom-btn" onclick="toggleWaveformZoom()" style="position:absolute;top:2px;right:3px;padding:1px 4px;font-size:9px;line-height:1;opacity:0.6;" title="Toggle zoom">⌕</button>
+      </div>
 
       <div class="knob-wrap">
         <label class="knob-label">VOLUME</label>
@@ -438,11 +441,26 @@ let trebleFilter = null;
 let state = 'idle'; // idle | playing | paused
 let fileName = '';
 let fileDuration = 0;
+let fileBPM = '';
+let fileTitle = '';
+let fileArtist = '';
+let scrollOffset = 0;
+let lastScrollTime = 0;
 let cuePoint = 0;
 let pitchRate = 1.0;
 let keylockOn = false;
 
 let waveformData = null;
+let waveformHiRes = null;
+let waveformZoomed = false;
+const ZOOM_SECONDS = 10;
+
+let scratchNode = null;
+let scratchGainNode = null;
+let scratchActive = false;
+let scratchPosition = 0;
+let scratchRate = 0;
+let lastScrubTime = 0;
 const DISPLAY_W = 36;
 
 // ── FRAME ─────────────────────────────────────────
@@ -476,7 +494,11 @@ function drawFrames() {
 }
 
 // ── DISPLAY ───────────────────────────────────────
-function lpad(s) { return '  ' + s.padEnd(DISPLAY_W); }
+function lpad(s) { return s.slice(0, DISPLAY_W).padEnd(DISPLAY_W); }
+function lpad2(left, right) {
+  const col = 18;
+  return lpad(left.padEnd(col) + right);
+}
 
 function fmtTime(sec) {
   if (!sec || sec < 0) sec = 0;
@@ -495,12 +517,27 @@ function render() {
   lines.push('');
 
   const statusTxt = state === 'playing' ? '► PLAYING' : state === 'paused' ? '■ PAUSED' : 'READY.';
-  const fn = fileName ? fileName : '(none)';
+  const fn = fileTitle && fileArtist ? fileArtist + ' — ' + fileTitle
+           : fileTitle ? fileTitle
+           : fileName ? fileName : '(none)';
   const maxFn = DISPLAY_W - 8;
-  const truncFn = fn.length > maxFn ? fn.slice(0, maxFn - 3) + '...' : fn;
+  let displayFn;
+  if (fn.length > maxFn) {
+    const padded = fn + '   ·   ';
+    const now = performance.now();
+    if (now - lastScrollTime > 180) {
+      scrollOffset = (scrollOffset + 1) % padded.length;
+      lastScrollTime = now;
+    }
+    const doubled = padded + padded;
+    displayFn = doubled.slice(scrollOffset, scrollOffset + maxFn);
+  } else {
+    displayFn = fn;
+    scrollOffset = 0;
+  }
 
   lines.push(lpad('STATUS: ' + statusTxt));
-  lines.push(lpad('FILE:   ' + truncFn));
+  lines.push(lpad('FILE:   ' + displayFn));
   lines.push(lpad('LEN:    ' + fmtTime(fileDuration)));
 
   const pos = getCurrentPos();
@@ -508,8 +545,10 @@ function render() {
   const pitchPct = ((pitchRate - 1) * 100).toFixed(1);
   const pitchStr = (pitchRate >= 1 ? '+' : '') + pitchPct + '%';
 
-  lines.push(lpad('POS:    ' + fmtTime(pos) + '    REM: ' + fmtTime(remain)));
-  lines.push(lpad('CUE:    ' + fmtTime(cuePoint) + '  PITCH: ' + pitchStr));
+  const bpmStr = fileBPM ? fileBPM + ' BPM' : '---';
+  lines.push(lpad2('BPM:    ' + bpmStr, 'REM: ' + fmtTime(remain)));
+  lines.push(lpad2('POS:    ' + fmtTime(pos), 'PITCH: ' + pitchStr));
+  lines.push(lpad('CUE:    ' + fmtTime(cuePoint)));
   lines.push('');
 
   const frameW = DISPLAY_W + 4;
@@ -529,7 +568,7 @@ function getCurrentPos() {
 
 // ── WAVEFORM ──────────────────────────────────────
 function buildWaveformData() {
-  if (!audioBuffer) { waveformData = null; return; }
+  if (!audioBuffer) { waveformData = null; waveformHiRes = null; return; }
   const canvas = document.getElementById('waveform-canvas');
   const W = canvas.width;
   const ch = audioBuffer.getChannelData(0);
@@ -546,6 +585,22 @@ function buildWaveformData() {
     data[i] = max;
   }
   waveformData = data;
+
+  const hiResPerSec = 100;
+  const hiLen = Math.ceil(audioBuffer.duration * hiResPerSec);
+  const hiData = new Float32Array(hiLen);
+  const hiStep = ch.length / hiLen;
+  for (let i = 0; i < hiLen; i++) {
+    let max = 0;
+    const start = Math.floor(i * hiStep);
+    const end = Math.min(start + Math.ceil(hiStep), ch.length);
+    for (let j = start; j < end; j++) {
+      const v = Math.abs(ch[j]);
+      if (v > max) max = v;
+    }
+    hiData[i] = max;
+  }
+  waveformHiRes = hiData;
 }
 
 function drawPlayhead() {
@@ -559,11 +614,31 @@ function drawPlayhead() {
   ctx.fillStyle = bg();
   ctx.fillRect(0, 0, W, H);
 
-  if (waveformData) {
+  const trimVal = parseFloat(document.getElementById('knob-trim').dataset.value);
+  const trimGain = trimVal <= -9 ? 0 : Math.pow(10, trimVal / 20);
+  const mid = H / 2;
+
+  if (waveformZoomed && waveformHiRes && fileDuration > 0) {
+    const pos = getCurrentPos();
+    const hiResPerSec = waveformHiRes.length / fileDuration;
+    const samplesInView = Math.floor(ZOOM_SECONDS * hiResPerSec);
+    const centerSample = Math.floor(pos * hiResPerSec);
+    const startSample = centerSample - Math.floor(samplesInView / 2);
+
     ctx.fillStyle = textColor + '88';
-    const mid = H / 2;
-    const trimVal = parseFloat(document.getElementById('knob-trim').dataset.value);
-    const trimGain = trimVal <= -9 ? 0 : Math.pow(10, trimVal / 20);
+    for (let i = 0; i < W; i++) {
+      const si = startSample + Math.floor(i * samplesInView / W);
+      if (si < 0 || si >= waveformHiRes.length) continue;
+      const h = Math.min(waveformHiRes[si] * trimGain, 1) * mid * 0.9;
+      ctx.fillRect(i, mid - h, 1, h * 2);
+    }
+
+    ctx.fillStyle = textColor;
+    const playheadX = Math.floor(W / 2);
+    ctx.fillRect(playheadX, 0, 1, H);
+
+  } else if (waveformData) {
+    ctx.fillStyle = textColor + '88';
     for (let i = 0; i < W; i++) {
       const h = Math.min(waveformData[i] * trimGain, 1) * mid * 0.9;
       ctx.fillRect(i, mid - h, 1, h * 2);
@@ -581,6 +656,12 @@ function drawPlayhead() {
     ctx.textAlign = 'center';
     ctx.fillText('NO AUDIO LOADED', W / 2, H / 2 + 4);
   }
+}
+
+function toggleWaveformZoom() {
+  waveformZoomed = !waveformZoomed;
+  const btn = document.getElementById('waveform-zoom-btn');
+  btn.classList.toggle('loop-active', waveformZoomed);
 }
 
 // ── AUDIO ─────────────────────────────────────────
@@ -613,6 +694,39 @@ function ensureAudioCtx() {
     mediaSourceNode = audioCtx.createMediaElementSource(audioElement);
     mediaSourceNode.connect(trimGainNode);
 
+    scratchNode = audioCtx.createScriptProcessor(1024, 0, 2);
+    scratchGainNode = audioCtx.createGain();
+    scratchGainNode.gain.value = 0;
+    scratchNode.connect(scratchGainNode);
+    scratchGainNode.connect(trimGainNode);
+
+    scratchNode.onaudioprocess = function(e) {
+      const L = e.outputBuffer.getChannelData(0);
+      const R = e.outputBuffer.getChannelData(1);
+      if (!scratchActive || !audioBuffer) {
+        for (let i = 0; i < L.length; i++) { L[i] = 0; R[i] = 0; }
+        return;
+      }
+      const srcL = audioBuffer.getChannelData(0);
+      const srcR = audioBuffer.numberOfChannels > 1 ? audioBuffer.getChannelData(1) : srcL;
+      const len = audioBuffer.length;
+      const elapsed = performance.now() - lastScrubTime;
+      const decay = elapsed > 60;
+      for (let i = 0; i < L.length; i++) {
+        if (decay) scratchRate *= 0.993;
+        const idx = Math.floor(scratchPosition);
+        if (idx >= 0 && idx < len - 1) {
+          const frac = scratchPosition - idx;
+          L[i] = srcL[idx] * (1 - frac) + srcL[idx + 1] * frac;
+          R[i] = srcR[idx] * (1 - frac) + srcR[idx + 1] * frac;
+        } else {
+          L[i] = 0; R[i] = 0;
+        }
+        scratchPosition += scratchRate;
+      }
+      if (decay && Math.abs(scratchRate) < 0.001) scratchRate = 0;
+    };
+
     audioElement.addEventListener('ended', () => {
       state = 'idle';
       updateButtons();
@@ -627,6 +741,53 @@ async function loadFile(e) {
   e.target.value = '';
 }
 
+function parseID3v2(buf) {
+  const d = new DataView(buf);
+  const u8 = new Uint8Array(buf);
+  if (u8[0] !== 0x49 || u8[1] !== 0x44 || u8[2] !== 0x33) return {};
+  const ver = u8[3];
+  const tagSize = (u8[6] << 21) | (u8[7] << 14) | (u8[8] << 7) | u8[9];
+  const headerSize = ver >= 3 ? 10 : 6;
+  const result = {};
+  let pos = 10;
+  const end = Math.min(10 + tagSize, buf.byteLength);
+
+  while (pos < end - headerSize) {
+    let frameId, frameSize;
+    if (ver >= 3) {
+      frameId = String.fromCharCode(u8[pos], u8[pos+1], u8[pos+2], u8[pos+3]);
+      if (frameId[0] === '\0') break;
+      frameSize = ver === 4
+        ? (u8[pos+4] << 21) | (u8[pos+5] << 14) | (u8[pos+6] << 7) | u8[pos+7]
+        : d.getUint32(pos + 4);
+      pos += 10;
+    } else {
+      frameId = String.fromCharCode(u8[pos], u8[pos+1], u8[pos+2]);
+      if (frameId[0] === '\0') break;
+      frameSize = (u8[pos+3] << 16) | (u8[pos+4] << 8) | u8[pos+5];
+      pos += 6;
+    }
+    if (frameSize <= 0 || pos + frameSize > end) break;
+
+    const wanted = { TBPM: 'bpm', TIT2: 'title', TPE1: 'artist', TBP: 'bpm', TT2: 'title', TP1: 'artist' };
+    if (wanted[frameId]) {
+      const enc = u8[pos];
+      let text = '';
+      if (enc === 0 || enc === 3) {
+        const bytes = u8.slice(pos + 1, pos + frameSize);
+        text = new TextDecoder(enc === 3 ? 'utf-8' : 'iso-8859-1').decode(bytes);
+      } else if (enc === 1 || enc === 2) {
+        const start = enc === 1 ? pos + 3 : pos + 1;
+        const slice = buf.slice(start, pos + frameSize);
+        text = new TextDecoder('utf-16').decode(slice);
+      }
+      result[wanted[frameId]] = text.replace(/\0/g, '').trim();
+    }
+    pos += frameSize;
+  }
+  return result;
+}
+
 async function loadTrack(file) {
   if (state === 'playing') stopAudio();
   ensureAudioCtx();
@@ -637,8 +798,14 @@ async function loadTrack(file) {
   audioElement.playbackRate = pitchRate;
 
   fileName = file.name;
+  fileBPM = '';
+  fileTitle = '';
+  fileArtist = '';
+  scrollOffset = 0;
+  lastScrollTime = 0;
   audioBuffer = null;
   waveformData = null;
+  waveformHiRes = null;
   cuePoint = 0;
   state = 'idle';
 
@@ -648,6 +815,10 @@ async function loadTrack(file) {
 
   try {
     const arrayBuf = await file.arrayBuffer();
+    const tags = parseID3v2(arrayBuf);
+    if (tags.bpm) fileBPM = tags.bpm;
+    if (tags.title) fileTitle = tags.title;
+    if (tags.artist) fileArtist = tags.artist;
     audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
     buildWaveformData();
   } catch (err) {}
@@ -734,32 +905,102 @@ function releaseCue() {
 (function() {
   const canvas = document.getElementById('waveform-canvas');
   let seeking = false;
+  let scrubStartX = 0;
+  let scrubStartTime = 0;
+  let wasPlaying = false;
 
-  function seek(x) {
+  function seekAbsolute(x) {
     if (!audioElement || !audioElement.src) return;
     const rect = canvas.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (x - rect.left) / rect.width));
     audioElement.currentTime = ratio * fileDuration;
-    if (state !== 'playing') {
+    if (state !== 'playing' && !cueHeld) {
       state = 'paused';
       updateButtons();
     }
   }
 
-  canvas.addEventListener('mousedown', (e) => { seeking = true; seek(e.clientX); });
-  document.addEventListener('mousemove', (e) => { if (seeking) seek(e.clientX); });
-  document.addEventListener('mouseup', () => { seeking = false; });
+  function scrub(x) {
+    if (!audioElement || !audioElement.src || !fileDuration) return;
+    const rect = canvas.getBoundingClientRect();
+    const dx = x - scrubStartX;
+    const secondsPerPixel = ZOOM_SECONDS / rect.width;
+    const newTime = Math.max(0, Math.min(fileDuration, scrubStartTime - dx * secondsPerPixel));
+    audioElement.currentTime = newTime;
 
-  canvas.addEventListener('touchstart', (e) => { seeking = true; seek(e.touches[0].clientX); e.preventDefault(); }, { passive: false });
-  document.addEventListener('touchmove', (e) => { if (seeking && e.touches.length) seek(e.touches[0].clientX); }, { passive: false });
-  document.addEventListener('touchend', () => { seeking = false; });
+    if (scratchActive && audioBuffer) {
+      const newPos = newTime * audioBuffer.sampleRate;
+      const now = performance.now();
+      const dtMs = now - lastScrubTime;
+      if (dtMs > 0 && lastScrubTime > 0) {
+        const dSamples = newPos - scratchPosition;
+        const outputSamples = (dtMs / 1000) * audioBuffer.sampleRate;
+        scratchRate = dSamples / outputSamples;
+      }
+      scratchPosition = newPos;
+      lastScrubTime = now;
+    }
+  }
+
+  function onSeekStart(x) {
+    if (!audioElement || !audioElement.src) return;
+    seeking = true;
+    if (waveformZoomed) {
+      scrubStartX = x;
+      scrubStartTime = getCurrentPos();
+      wasPlaying = state === 'playing';
+      if (wasPlaying && !cueHeld) audioElement.pause();
+      if (audioBuffer && scratchGainNode && audioCtx) {
+        scratchActive = true;
+        scratchPosition = scrubStartTime * audioBuffer.sampleRate;
+        scratchRate = 0;
+        lastScrubTime = performance.now();
+        scratchGainNode.gain.setValueAtTime(1, audioCtx.currentTime);
+      }
+    } else {
+      seekAbsolute(x);
+    }
+  }
+
+  function onSeekMove(x) {
+    if (!seeking) return;
+    if (waveformZoomed) {
+      scrub(x);
+    } else {
+      seekAbsolute(x);
+    }
+  }
+
+  function onSeekEnd() {
+    if (scratchActive && scratchGainNode && audioCtx) {
+      scratchGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+      scratchActive = false;
+      scratchRate = 0;
+      if (audioBuffer) {
+        audioElement.currentTime = Math.max(0, Math.min(fileDuration, scratchPosition / audioBuffer.sampleRate));
+      }
+    }
+    if (seeking && waveformZoomed && wasPlaying && !cueHeld) {
+      audioElement.play();
+    }
+    if (!wasPlaying && seeking && !cueHeld) {
+      state = 'paused';
+      updateButtons();
+    }
+    seeking = false;
+  }
+
+  canvas.addEventListener('mousedown', (e) => { onSeekStart(e.clientX); });
+  document.addEventListener('mousemove', (e) => { onSeekMove(e.clientX); });
+  document.addEventListener('mouseup', () => { onSeekEnd(); });
+
+  canvas.addEventListener('touchstart', (e) => { onSeekStart(e.touches[0].clientX); e.preventDefault(); }, { passive: false });
+  document.addEventListener('touchmove', (e) => { if (seeking && e.touches.length) onSeekMove(e.touches[0].clientX); }, { passive: false });
+  document.addEventListener('touchend', () => { onSeekEnd(); });
 })();
 
 // ── PITCH ─────────────────────────────────────────
-let pitchResetUntil = 0;
-
 function changePitch() {
-  if (performance.now() < pitchResetUntil) return;
   const pct = parseFloat(document.getElementById('pitch-slider').value);
   pitchRate = 1 + pct / 100;
   const label = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
@@ -769,12 +1010,27 @@ function changePitch() {
 
 function resetPitch() {
   const el = document.getElementById('pitch-slider');
-  pitchResetUntil = performance.now() + 100;
   el.value = 0;
   pitchRate = 1;
   document.getElementById('pitch-val').textContent = '+0.0%';
   if (audioElement) audioElement.playbackRate = 1;
+  el.blur();
 }
+
+(function() {
+  const el = document.getElementById('pitch-slider');
+  let lastDown = 0;
+  el.addEventListener('mousedown', (e) => {
+    const now = Date.now();
+    if (now - lastDown < 350) {
+      e.preventDefault();
+      resetPitch();
+      lastDown = 0;
+      return;
+    }
+    lastDown = now;
+  });
+})();
 
 function toggleKeylock() {
   keylockOn = !keylockOn;
@@ -832,10 +1088,11 @@ function nudgeEnd() {
 
 (function initCue() {
   const btnCue = document.getElementById('btn-cue');
-  btnCue.addEventListener('mousedown', (e) => { e.preventDefault(); goToCue(); });
-  btnCue.addEventListener('touchstart', (e) => { e.preventDefault(); goToCue(); }, { passive: false });
-  document.addEventListener('mouseup', releaseCue);
-  document.addEventListener('touchend', releaseCue);
+  let cueViaMouseBtn = false;
+  btnCue.addEventListener('mousedown', (e) => { e.preventDefault(); cueViaMouseBtn = true; goToCue(); });
+  btnCue.addEventListener('touchstart', (e) => { e.preventDefault(); cueViaMouseBtn = true; goToCue(); }, { passive: false });
+  document.addEventListener('mouseup', () => { if (cueViaMouseBtn) { cueViaMouseBtn = false; releaseCue(); } });
+  document.addEventListener('touchend', () => { if (cueViaMouseBtn) { cueViaMouseBtn = false; releaseCue(); } });
 })();
 
 // ── KNOBS ─────────────────────────────────────────
@@ -1233,7 +1490,7 @@ document.querySelectorAll('select, input[type="range"]').forEach(el => {
 
 // ── KEYBOARD ─────────────────────────────────────
 document.addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if ((e.target.tagName === 'INPUT' && e.target.type !== 'range') || e.target.tagName === 'SELECT') return;
   if (e.repeat) return;
   if (e.key === 'q') goToCue();
   else if (e.key === 'w') togglePlay();
@@ -1243,6 +1500,10 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('keyup', (e) => {
   if (e.key === 'q') releaseCue();
   else if (e.key === 't' || e.key === 'y') nudgeEnd();
+});
+window.addEventListener('blur', () => {
+  releaseCue();
+  nudgeEnd();
 });
 
 // ── DRAG & DROP ──────────────────────────────────
@@ -1325,6 +1586,10 @@ function onMidiMessage(e) {
   if (cmd === 0xB0) {
     if (midiLearnTarget && midiLearnType === 'cc') {
       assignCC(data1, midiLearnTarget);
+      if (midiPopupEl) {
+        const relChk = midiPopupEl.querySelector('#mp-rel-chk');
+        if (relChk) ccRelative[data1] = relChk.checked;
+      }
       closeMidiPopup(false);
       return;
     }
@@ -1358,6 +1623,7 @@ function assignCC(cc, paramId) {
   if (!ccToParam[cc]) ccToParam[cc] = [];
   if (!ccToParam[cc].includes(paramId)) ccToParam[cc].push(paramId);
   paramToCC[paramId] = cc;
+  if (paramId === 'jog') ccRelative[cc] = true;
 }
 
 function clearCC(paramId) {
@@ -1395,19 +1661,77 @@ function clearNote(actionId) {
   }
 }
 
+const ccRelative = {};
+
+function decodeRelative(value) {
+  if (value === 0 || value === 64) return 0;
+  if (value <= 63) return value;
+  return 64 - value;
+}
+
+function applyJog(ccVal) {
+  if (!audioElement || !audioElement.src || !audioBuffer || !audioCtx) return;
+  const delta = decodeRelative(ccVal);
+  if (delta === 0) return;
+  const sensitivity = 0.015;
+  const seekDelta = delta * sensitivity;
+
+  if (!scratchActive) {
+    scratchActive = true;
+    scratchPosition = getCurrentPos() * audioBuffer.sampleRate;
+    scratchGainNode.gain.setValueAtTime(1, audioCtx.currentTime);
+    if (state === 'playing') audioElement.pause();
+  }
+  const newTime = Math.max(0, Math.min(fileDuration, scratchPosition / audioBuffer.sampleRate + seekDelta));
+  scratchPosition = newTime * audioBuffer.sampleRate;
+  scratchRate = delta * sensitivity * audioBuffer.sampleRate / 1024;
+  lastScrubTime = performance.now();
+  audioElement.currentTime = newTime;
+
+  clearTimeout(applyJog._stopTimer);
+  applyJog._stopTimer = setTimeout(() => {
+    if (!scratchActive) return;
+    scratchGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+    scratchActive = false;
+    scratchRate = 0;
+    if (state === 'playing') audioElement.play();
+  }, 120);
+}
+
 function applyCCValue(paramId, ccVal) {
+  const cc = paramToCC[paramId];
+  const rel = cc !== undefined && ccRelative[cc];
+
+  if (paramId === 'jog') {
+    applyJog(ccVal);
+    return;
+  }
+
   if (paramId === 'pitch') {
     const el = document.getElementById('pitch-slider');
     const min = parseFloat(el.min);
     const max = parseFloat(el.max);
-    el.value = min + (ccVal / 127) * (max - min);
+    if (rel) {
+      const delta = decodeRelative(ccVal);
+      const step = (max - min) / 80;
+      el.value = Math.max(min, Math.min(max, parseFloat(el.value) + delta * step));
+    } else {
+      el.value = min + (ccVal / 127) * (max - min);
+    }
     changePitch();
   } else {
     const el = document.getElementById('knob-' + paramId);
     if (!el) return;
     const min = parseFloat(el.dataset.min);
     const max = parseFloat(el.dataset.max);
-    const val = Math.round(min + (ccVal / 127) * (max - min));
+    let val;
+    if (rel) {
+      const delta = decodeRelative(ccVal);
+      const step = (max - min) / 80;
+      val = Math.round(Math.max(min, Math.min(max, parseFloat(el.dataset.value) + delta * step)) * 10) / 10;
+    } else {
+      val = Math.round((min + (ccVal / 127) * (max - min)) * 10) / 10;
+    }
     el.dataset.value = val;
     updateKnobVisual(el);
     applyKnobParam(paramId, val);
@@ -1436,10 +1760,13 @@ function showMidiPopup(type, id, x, y) {
   const current = isCC ? paramToCC[id] : actionToNote[id];
   const tag = isCC ? 'CC' : 'NOTE';
 
+  const relChecked = isCC && current !== undefined && ccRelative[current] ? ' checked' : '';
   el.innerHTML =
     '<div class="mp-title">' + label + (current !== undefined ? ' — ' + tag + ' ' + current : '') + '</div>' +
     '<div class="mp-row"><span style="color:#888;">' + tag + '#</span>' +
-    '<input type="number" min="0" max="127" value="' + (current !== undefined ? current : '') + '" id="mp-num-input" placeholder="0-127"></div>' +
+    '<input type="number" min="0" max="127" value="' + (current !== undefined ? current : '') + '" id="mp-num-input" placeholder="0-127">' +
+    (isCC ? '<label style="font-size:10px;color:#888;cursor:pointer;margin-left:6px;white-space:nowrap;"><input type="checkbox" id="mp-rel-chk"' + relChecked + ' style="margin-right:3px;">REL</label>' : '') +
+    '</div>' +
     '<button class="mp-btn" id="mp-learn-btn">LEARN</button>' +
     '<button class="mp-btn" id="mp-clear-btn">CLEAR</button>';
 
@@ -1456,8 +1783,14 @@ function showMidiPopup(type, id, x, y) {
     if (e.key === 'Enter') {
       const v = parseInt(numInput.value);
       if (v >= 0 && v <= 127) {
-        isCC ? assignCC(v, id) : assignNote(v, id);
-        closeMidiPopup();
+        if (isCC) {
+          assignCC(v, id);
+          const relChk = el.querySelector('#mp-rel-chk');
+          if (relChk) ccRelative[v] = relChk.checked;
+        } else {
+          assignNote(v, id);
+        }
+        closeMidiPopup(false);
       }
     }
   });
@@ -1482,12 +1815,18 @@ function closeMidiPopup(autoAssign) {
   if (midiPopupEl) {
     if (autoAssign !== false) {
       const input = midiPopupEl.querySelector('#mp-num-input');
+      const relChk = midiPopupEl.querySelector('#mp-rel-chk');
       const id = midiPopupEl.dataset.targetId;
       const type = midiPopupEl.dataset.type;
       if (input && id) {
         const v = parseInt(input.value);
         if (v >= 0 && v <= 127) {
-          type === 'cc' ? assignCC(v, id) : assignNote(v, id);
+          if (type === 'cc') {
+            assignCC(v, id);
+            if (relChk) ccRelative[v] = relChk.checked;
+          } else {
+            assignNote(v, id);
+          }
         }
       }
     }
@@ -1517,6 +1856,10 @@ document.querySelectorAll('.knob').forEach(el => {
 document.getElementById('pitch-slider').addEventListener('contextmenu', (e) => {
   e.preventDefault();
   showMidiPopup('cc', 'pitch', e.clientX, e.clientY);
+});
+document.getElementById('waveform-canvas').addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  showMidiPopup('cc', 'jog', e.clientX, e.clientY);
 });
 
 // Note right-click on play and cue buttons
