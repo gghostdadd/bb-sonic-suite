@@ -862,10 +862,20 @@ function applyKnobParam(param, value) {
     document.getElementById('treble-val').textContent = fmtDb(value);
     if (trebleFilter && audioCtx) trebleFilter.gain.linearRampToValueAtTime(value, audioCtx.currentTime + 0.02);
   } else if (param === 'vol') {
-    const label = value <= -60 ? '-∞ dB' : fmtDb(value);
+    let gain;
+    if (value <= -60) {
+      gain = 0;
+    } else if (value >= 0) {
+      gain = Math.pow(10, value / 20);
+    } else {
+      const t = (value + 60) / 60;
+      const curvedDb = -60 + 60 * Math.pow(t, 0.5);
+      gain = Math.pow(10, curvedDb / 20);
+    }
+    const realDb = gain > 0 ? 20 * Math.log10(gain) : -Infinity;
+    const label = !isFinite(realDb) ? '-∞ dB' : fmtDb(realDb);
     document.getElementById('vol-val').textContent = label;
     if (outputGainNode && audioCtx) {
-      const gain = value <= -60 ? 0 : Math.pow(10, value / 20);
       outputGainNode.gain.linearRampToValueAtTime(gain, audioCtx.currentTime + 0.02);
     }
   }
