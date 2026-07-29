@@ -614,30 +614,34 @@ function ensureAudioCtx() {
 async function loadFile(e) {
   const file = e.target.files[0];
   if (!file) return;
+  loadTrack(file);
+  e.target.value = '';
+}
+
+async function loadTrack(file) {
   if (state === 'playing') stopAudio();
+  ensureAudioCtx();
+
+  if (fileObjectUrl) URL.revokeObjectURL(fileObjectUrl);
+  fileObjectUrl = URL.createObjectURL(file);
+  audioElement.src = fileObjectUrl;
+  audioElement.playbackRate = pitchRate;
+
+  fileName = file.name;
+  audioBuffer = null;
+  waveformData = null;
+  cuePoint = 0;
+  state = 'idle';
+
+  await new Promise(r => { audioElement.onloadedmetadata = r; });
+  fileDuration = audioElement.duration;
+  updateButtons();
 
   try {
-    ensureAudioCtx();
     const arrayBuf = await file.arrayBuffer();
     audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
     buildWaveformData();
-
-    if (fileObjectUrl) URL.revokeObjectURL(fileObjectUrl);
-    fileObjectUrl = URL.createObjectURL(file);
-    audioElement.src = fileObjectUrl;
-    audioElement.playbackRate = pitchRate;
-
-    fileName = file.name;
-    fileDuration = audioBuffer.duration;
-    cuePoint = 0;
-    state = 'idle';
-    updateButtons();
-  } catch (err) {
-    fileName = '?ERR: ' + (err.message || 'UNSUPPORTED');
-    audioBuffer = null;
-    waveformData = null;
-  }
-  e.target.value = '';
+  } catch (err) {}
 }
 
 function togglePlay() {
@@ -752,8 +756,10 @@ function changePitch() {
 }
 
 function resetPitch() {
-  document.getElementById('pitch-slider').value = 0;
+  const el = document.getElementById('pitch-slider');
+  el.value = 0;
   changePitch();
+  requestAnimationFrame(() => { el.value = 0; changePitch(); });
 }
 
 function toggleKeylock() {
@@ -1192,29 +1198,8 @@ document.addEventListener('keyup', (e) => {
   });
 })();
 
-async function loadDroppedFile(file) {
-  if (state === 'playing') stopAudio();
-  try {
-    ensureAudioCtx();
-    const arrayBuf = await file.arrayBuffer();
-    audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
-    buildWaveformData();
-
-    if (fileObjectUrl) URL.revokeObjectURL(fileObjectUrl);
-    fileObjectUrl = URL.createObjectURL(file);
-    audioElement.src = fileObjectUrl;
-    audioElement.playbackRate = pitchRate;
-
-    fileName = file.name;
-    fileDuration = audioBuffer.duration;
-    cuePoint = 0;
-    state = 'idle';
-    updateButtons();
-  } catch (err) {
-    fileName = '?ERR: ' + (err.message || 'UNSUPPORTED');
-    audioBuffer = null;
-    waveformData = null;
-  }
+function loadDroppedFile(file) {
+  loadTrack(file);
 }
 
 // ── MIDI ─────────────────────────────────────────
