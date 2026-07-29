@@ -756,7 +756,10 @@ function releaseCue() {
 })();
 
 // ── PITCH ─────────────────────────────────────────
+let pitchResetUntil = 0;
+
 function changePitch() {
+  if (performance.now() < pitchResetUntil) return;
   const pct = parseFloat(document.getElementById('pitch-slider').value);
   pitchRate = 1 + pct / 100;
   const label = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
@@ -766,9 +769,11 @@ function changePitch() {
 
 function resetPitch() {
   const el = document.getElementById('pitch-slider');
+  pitchResetUntil = performance.now() + 100;
   el.value = 0;
-  changePitch();
-  requestAnimationFrame(() => { el.value = 0; changePitch(); });
+  pitchRate = 1;
+  document.getElementById('pitch-val').textContent = '+0.0%';
+  if (audioElement) audioElement.playbackRate = 1;
 }
 
 function toggleKeylock() {
