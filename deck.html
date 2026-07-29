@@ -517,7 +517,7 @@ function render() {
   lines.push('');
 
   const statusTxt = state === 'playing' ? '► PLAYING' : state === 'paused' ? '■ PAUSED' : 'READY.';
-  const fn = fileTitle && fileArtist ? fileArtist + ' — ' + fileTitle
+  const fn = fileTitle && fileArtist ? fileArtist + ' -- ' + fileTitle
            : fileTitle ? fileTitle
            : fileName ? fileName : '(none)';
   const maxFn = DISPLAY_W - 8;
@@ -866,10 +866,6 @@ function stopAudio() {
   updateButtons();
 }
 
-function stopPlayback() {
-  if (audioElement) audioElement.pause();
-}
-
 let cueHeld = false;
 
 function goToCue() {
@@ -951,7 +947,7 @@ function releaseCue() {
       scrubStartTime = getCurrentPos();
       wasPlaying = state === 'playing';
       if (wasPlaying && !cueHeld) audioElement.pause();
-      if (audioBuffer && scratchGainNode && audioCtx) {
+      if (audioBuffer && scratchGainNode && audioCtx && !cueHeld) {
         scratchActive = true;
         scratchPosition = scrubStartTime * audioBuffer.sampleRate;
         scratchRate = 0;
@@ -1051,6 +1047,7 @@ let nudgeStartMs = null;
 
 function nudgeStart(direction) {
   if (!audioElement) return;
+  nudgeActive = true;
   if (nudgeAnimId) cancelAnimationFrame(nudgeAnimId);
   nudgeTargetRate = pitchRate + direction * (NUDGE_PCT / 100);
   nudgeFromRate = audioElement.playbackRate;
@@ -1065,8 +1062,11 @@ function nudgeAnimate() {
   else nudgeAnimId = null;
 }
 
+let nudgeActive = false;
+
 function nudgeEnd() {
-  if (!audioElement) return;
+  if (!audioElement || !nudgeActive) return;
+  nudgeActive = false;
   if (nudgeAnimId) cancelAnimationFrame(nudgeAnimId);
   nudgeTargetRate = pitchRate;
   nudgeFromRate = audioElement.playbackRate;
@@ -1514,13 +1514,9 @@ window.addEventListener('blur', () => {
   crt.addEventListener('drop', (e) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('audio/')) loadDroppedFile(file);
+    if (file && file.type.startsWith('audio/')) loadTrack(file);
   });
 })();
-
-function loadDroppedFile(file) {
-  loadTrack(file);
-}
 
 // ── MIDI ─────────────────────────────────────────
 let midiAccess = null;
@@ -1670,6 +1666,8 @@ function decodeRelative(value) {
   return 64 - value;
 }
 
+let jogWasPlaying = false;
+
 function applyJog(ccVal) {
   if (!audioElement || !audioElement.src || !audioBuffer || !audioCtx) return;
   const delta = decodeRelative(ccVal);
@@ -1679,9 +1677,10 @@ function applyJog(ccVal) {
 
   if (!scratchActive) {
     scratchActive = true;
+    jogWasPlaying = state === 'playing';
     scratchPosition = getCurrentPos() * audioBuffer.sampleRate;
     scratchGainNode.gain.setValueAtTime(1, audioCtx.currentTime);
-    if (state === 'playing') audioElement.pause();
+    if (jogWasPlaying) audioElement.pause();
   }
   const newTime = Math.max(0, Math.min(fileDuration, scratchPosition / audioBuffer.sampleRate + seekDelta));
   scratchPosition = newTime * audioBuffer.sampleRate;
@@ -1695,7 +1694,7 @@ function applyJog(ccVal) {
     scratchGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
     scratchActive = false;
     scratchRate = 0;
-    if (state === 'playing') audioElement.play();
+    if (jogWasPlaying) audioElement.play();
   }, 120);
 }
 
