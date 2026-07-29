@@ -396,6 +396,7 @@ body {
       </select>
       <button class="btn" onclick="detectMidi()" style="padding:4px 6px;font-size:11px;" title="Detect MIDI devices">⟳</button>
       <span class="btn" style="padding:4px 8px;font-size:11px;visibility:hidden;">BUS</span>
+      <span class="btn" style="padding:4px 8px;font-size:11px;visibility:hidden;">PFL</span>
     </div>
 
     <div class="panel-row">
@@ -405,16 +406,9 @@ body {
       </select>
       <button class="btn" onclick="detectOutputDevices()" style="padding:4px 6px;font-size:11px;" title="Detect output devices">⟳</button>
       <button class="btn" id="bus-toggle" onclick="toggleBus()" style="padding:4px 8px;font-size:11px;">BUS</button>
+      <button class="btn" id="cue-toggle" onclick="toggleCueOut()" style="padding:4px 8px;font-size:11px;" title="Pre-fader listen (requires 4+ channel output)">PFL</button>
     </div>
 
-    <div class="panel-row">
-      <label style="width:56px;text-align:right;">CUE:</label>
-      <select id="cue-select" class="crt-select" style="width:150px;" onchange="setCueDevice()">
-        <option value="">— NONE —</option>
-      </select>
-      <button class="btn" onclick="detectOutputDevices()" style="padding:4px 6px;font-size:11px;" title="Detect output devices">⟳</button>
-      <button class="btn" id="cue-toggle" onclick="toggleCueOut()" style="padding:4px 8px;font-size:11px;" title="Pre-fader listen">PFL</button>
-    </div>
 
     <div class="panel-row">
       <label>BG:</label>
@@ -732,6 +726,8 @@ function ensureAudioCtx() {
       state = 'idle';
       updateButtons();
     });
+
+    updatePflAvailability();
   }
 }
 
@@ -1256,20 +1252,18 @@ function applyColors() {
 
 let busOnly = false;
 let cueListening = false;
-let cueDeviceId = '';
-let pflDestNode = null;
-let pflCtx = null;
+let pflSetup = false;
+let pflMerger = null;
 let pflGainNode = null;
+let pflSplitter = null;
+let mainSplitter = null;
 
 async function enumerateOutputDevices() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     const sel = document.getElementById('output-select');
-    const cueSel = document.getElementById('cue-select');
     const current = sel.value;
-    const cueCurrent = cueSel.value;
     sel.innerHTML = '<option value="">DEFAULT</option>';
-    cueSel.innerHTML = '<option value="">— NONE —</option>';
     for (const d of devices) {
       if (d.kind !== 'audiooutput') continue;
       if (d.deviceId === 'default' || d.deviceId === '') continue;
@@ -1278,13 +1272,8 @@ async function enumerateOutputDevices() {
       opt.value = d.deviceId;
       opt.textContent = label;
       sel.appendChild(opt);
-      const opt2 = document.createElement('option');
-      opt2.value = d.deviceId;
-      opt2.textContent = label;
-      cueSel.appendChild(opt2);
     }
     if (current) sel.value = current;
-    if (cueCurrent) cueSel.value = cueCurrent;
   } catch(e) {}
 }
 
@@ -1303,46 +1292,65 @@ async function setOutputDevice() {
   try {
     if (audioCtx.setSinkId) await audioCtx.setSinkId(val || '');
   } catch(e) {}
+  updatePflAvailability();
 }
 
-function ensurePflNode() {
-  if (pflDestNode || !audioCtx) return;
-  pflDestNode = audioCtx.createMediaStreamDestination();
-  trebleFilter.connect(pflDestNode);
-}
-
-async function initPflCtx() {
-  if (pflCtx) return;
-  ensurePflNode();
-  if (!pflDestNode) return;
-  pflCtx = new AudioContext();
-  if (pflCtx.setSinkId && cueDeviceId) {
-    try { await pflCtx.setSinkId(cueDeviceId); } catch(e) {}
+function updatePflAvailability() {
+  const btn = document.getElementById('cue-toggle');
+  if (!audioCtx) { btn.disabled = true; return; }
+  const available = audioCtx.destination.maxChannelCount >= 4;
+  btn.disabled = !available;
+  btn.title = available
+    ? 'Pre-fader listen (channels 3-4)'
+    : 'PFL requires a 4+ channel output device';
+  if (!available && cueListening) {
+    cueListening = false;
+    btn.classList.remove('loop-active');
+    if (pflGainNode) pflGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
   }
-  const src = pflCtx.createMediaStreamSource(pflDestNode.stream);
-  pflGainNode = pflCtx.createGain();
+}
+
+function setupMultichannelPFL() {
+  if (pflSetup || !audioCtx) return false;
+  const dest = audioCtx.destination;
+  if (dest.maxChannelCount < 4) return false;
+
+  dest.channelCount = 4;
+  dest.channelCountMode = 'explicit';
+  dest.channelInterpretation = 'discrete';
+
+  pflMerger = audioCtx.createChannelMerger(4);
+  mainSplitter = audioCtx.createChannelSplitter(2);
+  pflSplitter = audioCtx.createChannelSplitter(2);
+  pflGainNode = audioCtx.createGain();
   pflGainNode.gain.value = 0;
-  src.connect(pflGainNode);
-  pflGainNode.connect(pflCtx.destination);
+
+  try { outputGainNode.disconnect(audioCtx.destination); } catch(e) {}
+
+  outputGainNode.connect(mainSplitter);
+  mainSplitter.connect(pflMerger, 0, 0);
+  mainSplitter.connect(pflMerger, 1, 1);
+
+  trebleFilter.connect(pflGainNode);
+  pflGainNode.connect(pflSplitter);
+  pflSplitter.connect(pflMerger, 0, 2);
+  pflSplitter.connect(pflMerger, 1, 3);
+
+  if (!busOnly) pflMerger.connect(dest);
+
+  pflSetup = true;
+  return true;
 }
 
-async function setCueDevice() {
-  cueDeviceId = document.getElementById('cue-select').value;
-  if (!cueDeviceId) return;
-  if (pflCtx && pflCtx.setSinkId) {
-    try { await pflCtx.setSinkId(cueDeviceId); } catch(e) {}
+function toggleCueOut() {
+  if (!audioCtx) return;
+  if (!pflSetup) {
+    if (!setupMultichannelPFL()) return;
   }
-}
-
-async function toggleCueOut() {
-  if (!cueDeviceId) return;
-  await initPflCtx();
   cueListening = !cueListening;
   const btn = document.getElementById('cue-toggle');
   btn.classList.toggle('loop-active', cueListening);
-  if (!pflGainNode || !pflCtx) return;
-  if (pflCtx.state === 'suspended') pflCtx.resume();
-  pflGainNode.gain.setValueAtTime(cueListening ? 1 : 0, pflCtx.currentTime);
+  pflGainNode.gain.setValueAtTime(cueListening ? 1 : 0, audioCtx.currentTime);
 }
 
 async function toggleBus() {
@@ -1350,13 +1358,14 @@ async function toggleBus() {
   const btn = document.getElementById('bus-toggle');
   btn.classList.toggle('loop-active', busOnly);
   if (!audioCtx || !outputGainNode) return;
+  const finalNode = pflSetup ? pflMerger : outputGainNode;
   if (busOnly) {
-    try { outputGainNode.disconnect(audioCtx.destination); } catch(e) {}
+    try { finalNode.disconnect(audioCtx.destination); } catch(e) {}
     await initBusBroadcaster();
     connectBusSender();
   } else {
     disconnectBusSender();
-    try { outputGainNode.connect(audioCtx.destination); } catch(e) {}
+    try { finalNode.connect(audioCtx.destination); } catch(e) {}
     setOutputDevice();
   }
 }
