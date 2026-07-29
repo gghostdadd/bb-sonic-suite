@@ -1147,7 +1147,7 @@ function applyKnobParam(param, value) {
     const realDb = gain > 0 ? 20 * Math.log10(gain) : -Infinity;
     const label = !isFinite(realDb) ? '-∞ dB' : fmtDb(realDb);
     document.getElementById('vol-val').textContent = label;
-    if (outputGainNode && audioCtx && !cueListening) {
+    if (outputGainNode && audioCtx) {
       outputGainNode.gain.linearRampToValueAtTime(gain, audioCtx.currentTime + 0.02);
     }
   }
@@ -1257,6 +1257,8 @@ function applyColors() {
 let busOnly = false;
 let cueListening = false;
 let cueDeviceId = '';
+let pflDestNode = null;
+let pflElement = null;
 
 async function enumerateOutputDevices() {
   try {
@@ -1296,33 +1298,43 @@ async function detectOutputDevices() {
 async function setOutputDevice() {
   if (!audioCtx) return;
   if (busOnly) return;
-  if (cueListening) return;
   const val = document.getElementById('output-select').value;
   try {
     if (audioCtx.setSinkId) await audioCtx.setSinkId(val || '');
   } catch(e) {}
 }
 
-function setCueDevice() {
-  cueDeviceId = document.getElementById('cue-select').value;
+function ensurePflNode() {
+  if (pflDestNode || !audioCtx) return;
+  pflDestNode = audioCtx.createMediaStreamDestination();
+  trebleFilter.connect(pflDestNode);
+  pflElement = document.createElement('audio');
+  pflElement.srcObject = pflDestNode.stream;
+  pflElement.muted = true;
 }
 
-async function toggleCueOut() {
+async function setCueDevice() {
+  cueDeviceId = document.getElementById('cue-select').value;
   if (!cueDeviceId) return;
+  ensurePflNode();
+  if (pflElement && pflElement.setSinkId) {
+    try { await pflElement.setSinkId(cueDeviceId); } catch(e) {}
+  }
+}
+
+function toggleCueOut() {
+  if (!cueDeviceId) return;
+  ensurePflNode();
   cueListening = !cueListening;
   const btn = document.getElementById('cue-toggle');
   btn.classList.toggle('loop-active', cueListening);
-  if (!audioCtx || !audioCtx.setSinkId) return;
-  try {
-    if (cueListening) {
-      await audioCtx.setSinkId(cueDeviceId);
-      outputGainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.02);
-    } else {
-      const mainId = document.getElementById('output-select').value;
-      await audioCtx.setSinkId(mainId || '');
-      applyKnobParam('vol', parseFloat(document.getElementById('knob-vol').dataset.value));
-    }
-  } catch(e) {}
+  if (!pflElement) return;
+  if (cueListening) {
+    pflElement.muted = false;
+    pflElement.play().catch(() => {});
+  } else {
+    pflElement.muted = true;
+  }
 }
 
 async function toggleBus() {
