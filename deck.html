@@ -405,6 +405,15 @@ body {
     </div>
 
     <div class="panel-row">
+      <label style="width:56px;text-align:right;">CUE:</label>
+      <select id="cue-select" class="crt-select" style="width:150px;" onchange="setCueDevice()">
+        <option value="">— NONE —</option>
+      </select>
+      <button class="btn" onclick="detectOutputDevices()" style="padding:4px 6px;font-size:11px;" title="Detect output devices">⟳</button>
+      <button class="btn" id="cue-toggle" onclick="toggleCueOut()" style="padding:4px 8px;font-size:11px;" title="Pre-fader listen">PFL</button>
+    </div>
+
+    <div class="panel-row">
       <label>BG:</label>
       <input type="color" id="color-bg" value="#0c0a02" onchange="applyColors()">
       <label>TEXT:</label>
@@ -875,7 +884,7 @@ function applyKnobParam(param, value) {
     const realDb = gain > 0 ? 20 * Math.log10(gain) : -Infinity;
     const label = !isFinite(realDb) ? '-∞ dB' : fmtDb(realDb);
     document.getElementById('vol-val').textContent = label;
-    if (outputGainNode && audioCtx) {
+    if (outputGainNode && audioCtx && !cueListening) {
       outputGainNode.gain.linearRampToValueAtTime(gain, audioCtx.currentTime + 0.02);
     }
   }
@@ -983,22 +992,33 @@ function applyColors() {
 // ── OUTPUT DEVICE & BUS ─────────────────────────────────
 
 let busOnly = false;
+let cueListening = false;
+let cueDeviceId = '';
 
 async function enumerateOutputDevices() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     const sel = document.getElementById('output-select');
+    const cueSel = document.getElementById('cue-select');
     const current = sel.value;
+    const cueCurrent = cueSel.value;
     sel.innerHTML = '<option value="">DEFAULT</option>';
+    cueSel.innerHTML = '<option value="">— NONE —</option>';
     for (const d of devices) {
       if (d.kind !== 'audiooutput') continue;
       if (d.deviceId === 'default' || d.deviceId === '') continue;
+      const label = d.label || ('Output ' + d.deviceId.slice(0, 8));
       const opt = document.createElement('option');
       opt.value = d.deviceId;
-      opt.textContent = d.label || ('Output ' + d.deviceId.slice(0, 8));
+      opt.textContent = label;
       sel.appendChild(opt);
+      const opt2 = document.createElement('option');
+      opt2.value = d.deviceId;
+      opt2.textContent = label;
+      cueSel.appendChild(opt2);
     }
     if (current) sel.value = current;
+    if (cueCurrent) cueSel.value = cueCurrent;
   } catch(e) {}
 }
 
@@ -1013,9 +1033,32 @@ async function detectOutputDevices() {
 async function setOutputDevice() {
   if (!audioCtx) return;
   if (busOnly) return;
+  if (cueListening) return;
   const val = document.getElementById('output-select').value;
   try {
     if (audioCtx.setSinkId) await audioCtx.setSinkId(val || '');
+  } catch(e) {}
+}
+
+function setCueDevice() {
+  cueDeviceId = document.getElementById('cue-select').value;
+}
+
+async function toggleCueOut() {
+  if (!cueDeviceId) return;
+  cueListening = !cueListening;
+  const btn = document.getElementById('cue-toggle');
+  btn.classList.toggle('loop-active', cueListening);
+  if (!audioCtx || !audioCtx.setSinkId) return;
+  try {
+    if (cueListening) {
+      await audioCtx.setSinkId(cueDeviceId);
+      outputGainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.02);
+    } else {
+      const mainId = document.getElementById('output-select').value;
+      await audioCtx.setSinkId(mainId || '');
+      applyKnobParam('vol', parseFloat(document.getElementById('knob-vol').dataset.value));
+    }
   } catch(e) {}
 }
 
@@ -1371,6 +1414,7 @@ function triggerAction(actionId) {
   else if (actionId === 'cue') goToCue();
   else if (actionId === 'nudge-down') nudgeStart(-1);
   else if (actionId === 'nudge-up') nudgeStart(1);
+  else if (actionId === 'cue-out') toggleCueOut();
 }
 
 function releaseAction(actionId) {
@@ -1486,6 +1530,10 @@ document.getElementById('btn-nudge-down').addEventListener('contextmenu', (e) =>
 document.getElementById('btn-nudge-up').addEventListener('contextmenu', (e) => {
   e.preventDefault();
   showMidiPopup('note', 'nudge-up', e.clientX, e.clientY);
+});
+document.getElementById('cue-toggle').addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  showMidiPopup('note', 'cue-out', e.clientX, e.clientY);
 });
 
 detectMidi();
