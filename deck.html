@@ -673,7 +673,7 @@ function ensureAudioCtx() {
     audioCtx = new AudioContext();
     outputGainNode = audioCtx.createGain();
     if (!busOnly) outputGainNode.connect(audioCtx.destination);
-    if (busBroadcasterNode) connectBusSender();
+    ensureBusSender();
 
     trimGainNode = audioCtx.createGain();
     trimGainNode.gain.value = 1;
@@ -1381,6 +1381,12 @@ async function toggleCueOut() {
   pflGainNode.gain.setValueAtTime(cueListening ? 1 : 0, audioCtx.currentTime);
 }
 
+async function ensureBusSender() {
+  if (!audioCtx || !outputGainNode) return;
+  await initBusBroadcaster();
+  connectBusSender();
+}
+
 async function toggleBus() {
   busOnly = !busOnly;
   const btn = document.getElementById('bus-toggle');
@@ -1389,10 +1395,7 @@ async function toggleBus() {
   const finalNode = pflSetup ? pflMerger : outputGainNode;
   if (busOnly) {
     try { finalNode.disconnect(audioCtx.destination); } catch(e) {}
-    await initBusBroadcaster();
-    connectBusSender();
   } else {
-    disconnectBusSender();
     try { finalNode.connect(audioCtx.destination); } catch(e) {}
     setOutputDevice();
   }
@@ -1506,7 +1509,8 @@ function initBusChannel() {
   const announce = () => {
     busChannel.postMessage({
       type: 'announce', id: BUS_ID, name: BUS_NAME,
-      sab: busSAB || null
+      sab: busSAB || null,
+      sampleRate: audioCtx ? audioCtx.sampleRate : null
     });
   };
 

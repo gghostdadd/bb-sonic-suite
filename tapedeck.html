@@ -1597,6 +1597,11 @@ async function connectBusReceiver(sourceId) {
   disconnectBusReceiver();
   const src = busSources[sourceId];
   if (!src) return;
+  if (src.sampleRate && src.sampleRate !== sampleRate) {
+    sampleRate = src.sampleRate;
+    document.getElementById('rate-select').value = String(sampleRate);
+    if (audioCtx) { audioCtx.close(); audioCtx = null; inputGainNode = null; processorNode = null; silentGain = null; }
+  }
   if (!audioCtx) {
     audioCtx = new AudioContext({ sampleRate: sampleRate });
   }
@@ -1678,7 +1683,7 @@ function initBusChannel() {
     if (msg.type === 'announce' || msg.type === 'heartbeat') {
       if (msg.id === BUS_ID) return;
       const isNew = !busSources[msg.id];
-      busSources[msg.id] = { id: msg.id, name: msg.name, ts: Date.now(), sab: msg.sab || null };
+      busSources[msg.id] = { id: msg.id, name: msg.name, ts: Date.now(), sab: msg.sab || null, sampleRate: msg.sampleRate || null };
       if (isNew) updateBusInputOptions();
     } else if (msg.type === 'leave') {
       delete busSources[msg.id];
