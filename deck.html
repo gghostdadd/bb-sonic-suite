@@ -1541,11 +1541,23 @@ document.querySelectorAll('select, input[type="range"]').forEach(el => {
 // ── KEYBOARD ─────────────────────────────────────
 document.addEventListener('keydown', (e) => {
   if ((e.target.tagName === 'INPUT' && e.target.type !== 'range') || e.target.tagName === 'SELECT') return;
-  if (e.repeat) return;
+  if (e.repeat && e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
   if (e.key === 'q') goToCue();
   else if (e.key === 'w') togglePlay();
   else if (e.key === 't') nudgeStart(-1);
   else if (e.key === 'y') nudgeStart(1);
+  else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    e.preventDefault();
+    const knob = document.getElementById('knob-vol');
+    const min = parseFloat(knob.dataset.min);
+    const max = parseFloat(knob.dataset.max);
+    const step = 4;
+    const cur = parseFloat(knob.dataset.value);
+    const next = Math.max(min, Math.min(max, cur + (e.key === 'ArrowRight' ? step : -step)));
+    knob.dataset.value = next;
+    updateKnobVisual(knob);
+    applyKnobParam(knob.dataset.param, next);
+  }
 });
 document.addEventListener('keyup', (e) => {
   if (e.key === 'q') releaseCue();
