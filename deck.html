@@ -405,8 +405,8 @@ body {
         <option value="">DEFAULT</option>
       </select>
       <button class="btn" onclick="detectOutputDevices()" style="padding:4px 6px;font-size:11px;" title="Detect output devices">⟳</button>
+      <button class="btn" id="cue-toggle" onclick="toggleCueOut()" style="padding:4px 8px;font-size:11px;" title="Pre-fader listen (channels 3-4)">PFL</button>
       <button class="btn" id="bus-toggle" onclick="toggleBus()" style="padding:4px 8px;font-size:11px;">BUS</button>
-      <button class="btn" id="cue-toggle" onclick="toggleCueOut()" style="padding:4px 8px;font-size:11px;" title="PFL requires a multichannel output device" disabled>PFL</button>
     </div>
 
 
@@ -1322,17 +1322,7 @@ function teardownMultichannelPFL() {
 }
 
 function updatePflAvailability() {
-  const btn = document.getElementById('cue-toggle');
-  const hasDevice = !!document.getElementById('output-select').value;
-  btn.disabled = !hasDevice;
-  btn.title = hasDevice
-    ? 'Pre-fader listen (channels 3-4)'
-    : 'PFL requires a multichannel output device';
-  if (!hasDevice && cueListening) {
-    cueListening = false;
-    btn.classList.remove('loop-active');
-    if (pflGainNode && audioCtx) pflGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-  }
+  document.getElementById('cue-toggle').disabled = false;
 }
 
 function setupMultichannelPFL() {
