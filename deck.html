@@ -1551,7 +1551,7 @@ document.addEventListener('keydown', (e) => {
     const knob = document.getElementById('knob-vol');
     const min = parseFloat(knob.dataset.min);
     const max = parseFloat(knob.dataset.max);
-    const step = 4;
+    const step = e.shiftKey ? 1 : 4;
     const cur = parseFloat(knob.dataset.value);
     const next = Math.max(min, Math.min(max, cur + (e.key === 'ArrowRight' ? step : -step)));
     knob.dataset.value = next;
