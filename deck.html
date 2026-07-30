@@ -406,7 +406,7 @@ body {
       </select>
       <button class="btn" onclick="detectOutputDevices()" style="padding:4px 6px;font-size:11px;" title="Detect output devices">⟳</button>
       <button class="btn" id="bus-toggle" onclick="toggleBus()" style="padding:4px 8px;font-size:11px;">BUS</button>
-      <button class="btn" id="cue-toggle" onclick="toggleCueOut()" style="padding:4px 8px;font-size:11px;" title="Pre-fader listen (requires 4+ channel output)">PFL</button>
+      <button class="btn" id="cue-toggle" onclick="toggleCueOut()" style="padding:4px 8px;font-size:11px;" title="PFL requires a multichannel output device" disabled>PFL</button>
     </div>
 
 
@@ -1288,6 +1288,14 @@ async function detectOutputDevices() {
 async function setOutputDevice() {
   if (!audioCtx) return;
   if (busOnly) return;
+  // tear down PFL when device changes so it re-inits for the new device
+  if (pflSetup) {
+    teardownMultichannelPFL();
+    if (cueListening) {
+      cueListening = false;
+      document.getElementById('cue-toggle').classList.remove('loop-active');
+    }
+  }
   const val = document.getElementById('output-select').value;
   try {
     if (audioCtx.setSinkId) await audioCtx.setSinkId(val || '');
@@ -1295,18 +1303,35 @@ async function setOutputDevice() {
   updatePflAvailability();
 }
 
+function teardownMultichannelPFL() {
+  if (!pflSetup || !audioCtx) return;
+  try { pflMerger.disconnect(); } catch(e) {}
+  try { mainSplitter.disconnect(); } catch(e) {}
+  try { pflSplitter.disconnect(); } catch(e) {}
+  try { pflGainNode.disconnect(); } catch(e) {}
+  try { outputGainNode.disconnect(mainSplitter); } catch(e) {}
+  try { trebleFilter.disconnect(pflGainNode); } catch(e) {}
+  if (!busOnly) outputGainNode.connect(audioCtx.destination);
+  audioCtx.destination.channelCount = 2;
+  audioCtx.destination.channelCountMode = 'explicit';
+  pflMerger = null;
+  mainSplitter = null;
+  pflSplitter = null;
+  pflGainNode = null;
+  pflSetup = false;
+}
+
 function updatePflAvailability() {
   const btn = document.getElementById('cue-toggle');
-  if (!audioCtx) { btn.disabled = true; return; }
-  const available = audioCtx.destination.maxChannelCount >= 4;
-  btn.disabled = !available;
-  btn.title = available
+  const hasDevice = !!document.getElementById('output-select').value;
+  btn.disabled = !hasDevice;
+  btn.title = hasDevice
     ? 'Pre-fader listen (channels 3-4)'
-    : 'PFL requires a 4+ channel output device';
-  if (!available && cueListening) {
+    : 'PFL requires a multichannel output device';
+  if (!hasDevice && cueListening) {
     cueListening = false;
     btn.classList.remove('loop-active');
-    if (pflGainNode) pflGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+    if (pflGainNode && audioCtx) pflGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
   }
 }
 
@@ -1342,10 +1367,15 @@ function setupMultichannelPFL() {
   return true;
 }
 
-function toggleCueOut() {
+async function toggleCueOut() {
   if (!audioCtx) return;
   if (!pflSetup) {
     if (!setupMultichannelPFL()) return;
+    // re-apply setSinkId so Chrome restarts the output stream at 4 channels
+    const val = document.getElementById('output-select').value;
+    if (audioCtx.setSinkId && val) {
+      try { await audioCtx.setSinkId(val); } catch(e) {}
+    }
   }
   cueListening = !cueListening;
   const btn = document.getElementById('cue-toggle');
