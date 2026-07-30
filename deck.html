@@ -87,6 +87,14 @@ body {
   margin-top: 8px;
 }
 
+#control-panel input[type="color"] {
+  width: 32px;
+  height: 24px;
+  border: 1px solid #555555;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
 #control-panel label {
   font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
   font-size: 13px;
@@ -364,7 +372,7 @@ body {
 
       <div style="position:relative;display:inline-block;">
         <canvas id="waveform-canvas" width="220" height="80"></canvas>
-        <button class="btn" id="waveform-zoom-btn" onclick="toggleWaveformZoom()" style="position:absolute;top:2px;right:3px;padding:1px 4px;font-size:9px;line-height:1;opacity:0.6;" title="Toggle zoom">⌕</button>
+        <button class="btn loop-active" id="waveform-zoom-btn" onclick="toggleWaveformZoom()" style="position:absolute;top:2px;right:3px;padding:1px 4px;font-size:9px;line-height:1;opacity:0.6;" title="Toggle zoom">⌕</button>
       </div>
 
       <div class="knob-wrap">
@@ -446,7 +454,7 @@ let keylockOn = false;
 
 let waveformData = null;
 let waveformHiRes = null;
-let waveformZoomed = false;
+let waveformZoomed = true;
 const ZOOM_SECONDS = 10;
 
 let scratchNode = null;
