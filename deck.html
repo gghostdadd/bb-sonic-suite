@@ -463,7 +463,25 @@ let scratchActive = false;
 let scratchPosition = 0;
 let scratchRate = 0;
 let lastScrubTime = 0;
+let spinningUp = false;
+let spinupTarget = 0;
 const DISPLAY_W = 36;
+
+function startSpinup() {
+  if (!audioBuffer || !audioCtx) return;
+  spinningUp = true;
+  spinupTarget = pitchRate;
+}
+
+function finishSpinup() {
+  spinningUp = false;
+  if (!audioBuffer || !audioElement) return;
+  audioElement.currentTime = Math.max(0, Math.min(fileDuration, scratchPosition / audioBuffer.sampleRate));
+  audioElement.play();
+  scratchGainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.03);
+  scratchActive = false;
+  scratchRate = 0;
+}
 
 // ── FRAME ─────────────────────────────────────────
 const bg = () => document.getElementById('color-bg').value;
@@ -714,9 +732,13 @@ function ensureAudioCtx() {
       const srcR = audioBuffer.numberOfChannels > 1 ? audioBuffer.getChannelData(1) : srcL;
       const len = audioBuffer.length;
       const elapsed = performance.now() - lastScrubTime;
-      const decay = elapsed > 60;
+      const decay = elapsed > 60 && !spinningUp;
       for (let i = 0; i < L.length; i++) {
-        if (decay) scratchRate *= 0.993;
+        if (spinningUp) {
+          scratchRate += (spinupTarget - scratchRate) * 0.0001;
+        } else if (decay) {
+          scratchRate *= 0.993;
+        }
         const idx = Math.floor(scratchPosition);
         if (idx >= 0 && idx < len - 1) {
           const frac = scratchPosition - idx;
@@ -728,6 +750,9 @@ function ensureAudioCtx() {
         scratchPosition += scratchRate;
       }
       if (decay && Math.abs(scratchRate) < 0.001) scratchRate = 0;
+      if (spinningUp && Math.abs(scratchRate - spinupTarget) < 0.01) {
+        finishSpinup();
+      }
     };
 
     audioElement.addEventListener('ended', () => {
@@ -974,14 +999,17 @@ function releaseCue() {
 
   function onSeekEnd() {
     if (scratchActive && scratchGainNode && audioCtx) {
-      scratchGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-      scratchActive = false;
-      scratchRate = 0;
-      if (audioBuffer) {
-        audioElement.currentTime = Math.max(0, Math.min(fileDuration, scratchPosition / audioBuffer.sampleRate));
+      if (wasPlaying && !cueHeld) {
+        startSpinup();
+      } else {
+        scratchGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        scratchActive = false;
+        scratchRate = 0;
+        if (audioBuffer) {
+          audioElement.currentTime = Math.max(0, Math.min(fileDuration, scratchPosition / audioBuffer.sampleRate));
+        }
       }
-    }
-    if (seeking && waveformZoomed && wasPlaying && !cueHeld) {
+    } else if (seeking && waveformZoomed && wasPlaying && !cueHeld) {
       audioElement.play();
     }
     if (!wasPlaying && seeking && !cueHeld) {
@@ -1771,10 +1799,13 @@ function applyJog(ccVal) {
   clearTimeout(applyJog._stopTimer);
   applyJog._stopTimer = setTimeout(() => {
     if (!scratchActive) return;
-    scratchGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-    scratchActive = false;
-    scratchRate = 0;
-    if (jogWasPlaying) audioElement.play();
+    if (jogWasPlaying) {
+      startSpinup();
+    } else {
+      scratchGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+      scratchActive = false;
+      scratchRate = 0;
+    }
   }, 120);
 }
 
