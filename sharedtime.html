@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BB SHARED TIME v1.0</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0a0800;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+#crt {
+  position: relative;
+  background: #0c0a02;
+  border: 1px solid #333333;
+  padding: 28px 36px;
+  display: flex;
+  flex-direction: column;
+  width: min-content;
+}
+
+#crt::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px);
+  pointer-events: none;
+  z-index: 10;
+}
+
+#display {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  white-space: pre;
+  user-select: none;
+}
+
+.frame-line {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  white-space: pre;
+  user-select: none;
+}
+
+#bottom-panel {
+  position: relative;
+  z-index: 20;
+  align-self: stretch;
+  overflow: hidden;
+}
+
+#panel-inner {
+  display: flex;
+  margin: 0 9px;
+}
+
+#info-col {
+  flex: 0 0 auto;
+  padding: 12px 16px;
+  min-width: 220px;
+}
+
+#info-display {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  white-space: pre;
+  user-select: none;
+}
+
+.panel-divider {
+  width: 1px;
+  background: #333333;
+  margin: 8px 0;
+}
+
+#control-col {
+  flex: 1;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+
+#control-col .panel-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.panel-border {
+  position: absolute;
+  top: 0; bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+  margin: 0; padding: 0;
+}
+.panel-border-left { left: 0; }
+.panel-border-right { right: 0; }
+
+.btn {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 12px;
+  background: transparent;
+  color: #FFFFFF;
+  border: 1px solid #555555;
+  padding: 6px 12px;
+  cursor: pointer;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  transition: background 0.15s, border-color 0.15s;
+  letter-spacing: 1px;
+}
+.btn:hover { background: rgba(255,255,255,0.08); border-color: #FFFFFF; }
+.btn.sync-active { color: #00FF60; border-color: #00FF60; text-shadow: 0 0 12px rgba(0,255,96,0.5); }
+
+#map-display { overflow: hidden; }
+#map-display .dim { opacity: 0.3; }
+
+#control-col label {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 11px;
+  color: #FFFFFF;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  letter-spacing: 1px;
+}
+
+.crt-select {
+  font-family: 'Menlo','Consolas','Courier New', monospace;
+  font-size: 11px;
+  background: #0c0a02;
+  color: #FFFFFF;
+  border: 1px solid #555555;
+  padding: 5px 6px;
+  text-shadow: 0 0 8px rgba(255,255,255,0.35);
+  cursor: pointer;
+  outline: none;
+}
+.crt-select:hover { border-color: #FFFFFF; }
+.crt-select option { background: #0c0a02; color: #FFFFFF; }
+
+#control-col input[type="color"] {
+  width: 32px; height: 24px; border: 1px solid #555555; background: transparent; cursor: pointer; padding: 0;
+}
+
+@keyframes pulse { 50% { opacity: 0.6; } }
+@keyframes flicker { 0%, 100% { opacity: 1; } 93% { opacity: 0.92; } 94% { opacity: 1; } }
+#crt { animation: flicker 8s infinite; }
+</style>
+</head>
+<body>
+<div id="crt">
+  <pre id="display"></pre>
+  <pre id="map-display" class="frame-line"></pre>
+  <pre id="frame-mid" class="frame-line"></pre>
+  <div id="bottom-panel">
+    <pre id="border-left" class="frame-line panel-border panel-border-left"></pre>
+    <pre id="border-right" class="frame-line panel-border panel-border-right"></pre>
+    <div id="panel-inner">
+      <div id="info-col">
+        <pre id="info-display"></pre>
+      </div>
+      <div class="panel-divider"></div>
+      <div id="control-col">
+        <div class="panel-row">
+          <label>TIMEZONE:</label>
+          <select id="tz-select" class="crt-select" style="width:200px;" onchange="changeTz()"></select>
+        </div>
+        <div class="panel-row">
+          <button class="btn" id="btn-clock-mode" onclick="toggleClockMode()">24H</button>
+          <button class="btn" id="btn-sync" onclick="calibrate()">⟳ SYNC</button>
+        </div>
+        <div class="panel-row">
+          <label>BG:</label>
+          <input type="color" id="color-bg" value="#0c0a02" onchange="applyColors()">
+          <label>TEXT:</label>
+          <input type="color" id="color-text" value="#FFFFFF" onchange="applyColors()">
+        </div>
+      </div>
+    </div>
+  </div>
+  <pre id="frame-bot" class="frame-line"></pre>
+</div>
+
+<script>
+
+const W = 76;
+
+const DIGITS = [
+  ['███████','█     █','█     █','█     █','█     █','█     █','███████'],
+  ['      █','      █','      █','      █','      █','      █','      █'],
+  ['███████','      █','      █','███████','█      ','█      ','███████'],
+  ['███████','      █','      █','███████','      █','      █','███████'],
+  ['█     █','█     █','█     █','███████','      █','      █','      █'],
+  ['███████','█      ','█      ','███████','      █','      █','███████'],
+  ['███████','█      ','█      ','███████','█     █','█     █','███████'],
+  ['███████','      █','      █','      █','      █','      █','      █'],
+  ['███████','█     █','█     █','███████','█     █','█     █','███████'],
+  ['███████','█     █','█     █','███████','      █','      █','███████'],
+];
+const COLON_ON  = ['   ',' █ ',' █ ','   ',' █ ',' █ ','   '];
+const COLON_OFF = ['   ','   ','   ','   ','   ','   ','   '];
+
+const MAP_W = 120, MAP_H = 28;
+const MAP_SPANS = [
+  [[47,50]],
+  [[33,54],[61,65],[81,83]],
+  [[25,27],[28,53],[60,64],[73,75],[82,87],[94,95]],
+  [[24,30],[31,33],[34,38],[42,53],[71,74],[76,77],[79,92],[94,96]],
+  [[13,30],[31,39],[43,52],[62,68],[69,70],[71,108]],
+  [[11,35],[36,41],[43,48],[51,54],[60,111]],
+  [[11,32],[35,40],[43,46],[59,108]],
+  [[11,14],[18,33],[35,41],[55,57],[59,62],[63,98],[102,105]],
+  [[10,11],[20,42],[54,100],[103,104]],
+  [[20,42],[56,99],[100,101]],
+  [[20,37],[55,59],[60,72],[73,97],[100,101]],
+  [[20,35],[55,61],[64,97],[98,101]],
+  [[22,33],[53,95]],
+  [[23,28],[32,33],[52,95]],
+  [[25,31],[33,37],[52,75],[80,84],[86,92],[94,96]],
+  [[29,32],[34,39],[52,74],[80,83],[88,92],[95,96]],
+  [[31,42],[53,73],[81,83],[87,90],[92,97]],
+  [[32,44],[60,72],[88,96],[100,101]],
+  [[32,47],[61,70],[89,96],[99,104]],
+  [[33,47],[61,71],[72,74],[96,100],[101,103]],
+  [[34,46],[61,70],[71,73],[93,104]],
+  [[35,45],[62,69],[71,72],[92,105]],
+  [[35,43],[62,68],[92,105]],
+  [[35,42],[63,65],[92,95],[98,104],[110,111]],
+  [[35,39],[101,102],[109,111]],
+  [[35,39],[107,109]],
+  [[35,38]],
+  [[38,39]],
+];
+
+const mapPixels = Array.from({length: MAP_H}, () => new Uint8Array(MAP_W));
+for (let y = 0; y < MAP_H; y++) {
+  for (const [x0, x1] of MAP_SPANS[y]) {
+    for (let x = x0; x < Math.min(x1, MAP_W); x++) mapPixels[y][x] = 1;
+  }
+}
+
+const BRAILLE_BITS = [[0x01,0x08],[0x02,0x10],[0x04,0x20],[0x40,0x80]];
+
+function getUtcOffsetHours(tz) {
+  const now = new Date();
+  const utc = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
+  const local = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+  return (local - utc) / 3600000;
+}
+
+function renderBrailleMap() {
+  const offset = getUtcOffsetHours(selectedTz);
+  const bandStartPx = Math.round((offset + 12) * 5);
+  const bandWidthPx = 5;
+  const charsW = MAP_W / 2;
+  const charsH = MAP_H / 4;
+
+  const bandSet = new Set();
+  for (let b = bandStartPx; b < bandStartPx + bandWidthPx; b++) {
+    bandSet.add(((b % MAP_W) + MAP_W) % MAP_W);
+  }
+
+  const rows = [];
+  for (let cy = 0; cy < charsH; cy++) {
+    let html = '';
+    let currentBand = null;
+    let buf = '';
+
+    for (let cx = 0; cx < charsW; cx++) {
+      const px = cx * 2;
+      const py = cy * 4;
+
+      let code = 0x2800;
+      for (let dy = 0; dy < 4; dy++) {
+        for (let dx = 0; dx < 2; dx++) {
+          const y = py + dy, x = px + dx;
+          if (y < MAP_H && x < MAP_W && mapPixels[y][x]) {
+            code |= BRAILLE_BITS[dy][dx];
+          }
+        }
+      }
+
+      const inBand = bandSet.has(px) || bandSet.has(px + 1);
+      const ch = String.fromCharCode(code);
+
+      if (inBand !== currentBand) {
+        if (buf) html += currentBand ? buf : '<span class="dim">' + buf + '</span>';
+        buf = ch;
+        currentBand = inBand;
+      } else {
+        buf += ch;
+      }
+    }
+    if (buf) html += currentBand ? buf : '<span class="dim">' + buf + '</span>';
+    rows.push(html);
+  }
+
+  const markerCharPos = Math.floor((((bandStartPx + 2) % MAP_W + MAP_W) % MAP_W) / 2);
+  let marker = ' '.repeat(60);
+  marker = marker.slice(0, markerCharPos) + '▼' + marker.slice(markerCharPos + 1);
+  rows.push(marker);
+
+  return rows;
+}
+
+let use12h = false;
+let offsetMs = 0;
+let lastSyncTime = null;
+let syncStatus = 'WAITING';
+let selectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+function pad(s) { return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║'; }
+function center(s) { const l = Math.floor((W - s.length) / 2); return '║' + ' '.repeat(l) + s + ' '.repeat(W - s.length - l) + '║'; }
+function hBar(ch) { return '╠' + ch.repeat(W) + '╣'; }
+
+function to12h(h24) {
+  const ampm = h24 >= 12 ? 'PM' : 'AM';
+  let h12 = h24 % 12;
+  if (h12 === 0) h12 = 12;
+  return { h: h12, ampm };
+}
+
+function renderBigClock(h, m, s, showColon) {
+  let displayH = h;
+  if (use12h) displayH = to12h(h).h;
+
+  const d = [
+    Math.floor(displayH / 10), displayH % 10,
+    Math.floor(m / 10), m % 10,
+    Math.floor(s / 10), s % 10
+  ];
+  const colon = showColon ? COLON_ON : COLON_OFF;
+  const lines = [];
+  const leadDigit = (use12h && d[0] === 0) ? '       ' : DIGITS[d[0]];
+
+  for (let row = 0; row < 7; row++) {
+    const ld = (typeof leadDigit === 'string') ? leadDigit : leadDigit[row];
+    lines.push(
+      ld + ' ' + DIGITS[d[1]][row] +
+      ' ' + colon[row] + ' ' +
+      DIGITS[d[2]][row] + ' ' + DIGITS[d[3]][row] +
+      ' ' + colon[row] + ' ' +
+      DIGITS[d[4]][row] + ' ' + DIGITS[d[5]][row]
+    );
+  }
+  return lines;
+}
+
+function getCalibratedNow() {
+  return new Date(Date.now() + offsetMs);
+}
+
+function getTimeInTz(date, tz) {
+  const parts = {};
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    hour: 'numeric', minute: 'numeric', second: 'numeric',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    weekday: 'long',
+    hour12: false
+  });
+  for (const p of fmt.formatToParts(date)) {
+    parts[p.type] = p.value;
+  }
+  return {
+    h: parseInt(parts.hour) % 24,
+    m: parseInt(parts.minute),
+    s: parseInt(parts.second),
+    year: parts.year,
+    month: parts.month,
+    day: parts.day,
+    weekday: parts.weekday.toUpperCase()
+  };
+}
+
+async function calibrate() {
+  syncStatus = 'SYNCING';
+  const btn = document.getElementById('btn-sync');
+  btn.classList.add('sync-active');
+
+  try {
+    const t0 = Date.now();
+    const resp = await fetch(window.location.href, { method: 'HEAD', cache: 'no-store' });
+    const t1 = Date.now();
+    const dateHeader = resp.headers.get('Date');
+    if (!dateHeader) {
+      syncStatus = 'NO DATE HDR';
+      btn.classList.remove('sync-active');
+      return;
+    }
+    const serverTime = new Date(dateHeader).getTime();
+    const rtt = t1 - t0;
+    const estimatedServerNow = serverTime + Math.round(rtt / 2);
+    offsetMs = estimatedServerNow - t1;
+    lastSyncTime = getCalibratedNow();
+    syncStatus = 'SYNCED';
+  } catch (e) {
+    syncStatus = 'SYNC FAILED';
+  }
+
+  setTimeout(() => {
+    document.getElementById('btn-sync').classList.remove('sync-active');
+  }, 800);
+}
+
+function render() {
+  const calibrated = getCalibratedNow();
+  const tz = getTimeInTz(calibrated, selectedTz);
+  const showColon = calibrated.getMilliseconds() < 500;
+
+  const lines = [];
+  lines.push('╔' + '═'.repeat(W) + '╗');
+  lines.push(pad(''));
+  lines.push(center('B B  S H A R E D  T I M E  v1.0'));
+  lines.push(pad(''));
+  lines.push(hBar('═'));
+  lines.push(pad(''));
+
+  const clockLines = renderBigClock(tz.h, tz.m, tz.s, showColon);
+  for (const cl of clockLines) {
+    const lp = Math.floor((W - cl.length) / 2);
+    const rp = W - cl.length - lp;
+    lines.push('║' + ' '.repeat(lp) + cl + ' '.repeat(rp) + '║');
+  }
+
+  if (use12h) {
+    lines.push(center(to12h(tz.h).ampm));
+  } else {
+    lines.push(pad(''));
+  }
+
+  const dateStr = tz.year + '-' + tz.month + '-' + tz.day;
+  lines.push(center(dateStr + '  ' + tz.weekday));
+  lines.push(pad(''));
+  lines.push(hBar('═'));
+
+  document.getElementById('display').textContent = lines.join('\n');
+
+  const mapRows = renderBrailleMap();
+  const mapHtml = [];
+  for (const row of mapRows) {
+    mapHtml.push('║' + ' '.repeat(8) + row + ' '.repeat(8) + '║');
+  }
+  mapHtml.push('║' + ' '.repeat(W) + '║');
+  document.getElementById('map-display').innerHTML = mapHtml.join('\n');
+  document.getElementById('frame-mid').textContent = hBar('═');
+  document.getElementById('frame-bot').textContent = '╚' + '═'.repeat(W) + '╝';
+
+  const infoLines = [];
+  infoLines.push('SYNC:   ' + syncStatus);
+
+  const offsetSign = offsetMs >= 0 ? '+' : '';
+  infoLines.push('OFFSET: ' + offsetSign + Math.round(offsetMs) + 'ms');
+
+  if (lastSyncTime) {
+    const ago = Math.round((Date.now() + offsetMs - lastSyncTime.getTime()) / 1000);
+    infoLines.push('LAST:   ' + ago + 's ago');
+  } else {
+    infoLines.push('LAST:   --');
+  }
+
+  infoLines.push('');
+
+  const shortTz = selectedTz.replace(/_/g, ' ');
+  const truncTz = shortTz.length > 26 ? shortTz.slice(0, 23) + '...' : shortTz;
+  infoLines.push('ZONE:   ' + truncTz);
+
+  try {
+    const abbr = new Intl.DateTimeFormat('en-US', {
+      timeZone: selectedTz, timeZoneName: 'short'
+    }).formatToParts(calibrated).find(p => p.type === 'timeZoneName')?.value || '';
+    infoLines.push('ABBR:   ' + abbr);
+  } catch (e) {
+    infoLines.push('ABBR:   --');
+  }
+
+  document.getElementById('info-display').textContent = infoLines.join('\n');
+
+  const lineH = 21.75;
+  const panel = document.getElementById('bottom-panel');
+  const panelLines = Math.ceil(panel.clientHeight / lineH) + 1;
+  const panelBorder = new Array(panelLines).fill('║').join('\n');
+  document.getElementById('border-left').textContent = panelBorder;
+  document.getElementById('border-right').textContent = panelBorder;
+
+  requestAnimationFrame(render);
+}
+
+function toggleClockMode() {
+  use12h = !use12h;
+  document.getElementById('btn-clock-mode').textContent = use12h ? '12H' : '24H';
+}
+
+let colorStyleEl = null;
+function applyColors() {
+  const bg = document.getElementById('color-bg').value;
+  const txt = document.getElementById('color-text').value;
+  document.body.style.background = bg;
+  document.getElementById('crt').style.background = bg;
+  document.getElementById('display').style.color = txt;
+  document.getElementById('display').style.textShadow = `0 0 8px ${txt}55`;
+  document.getElementById('info-display').style.color = txt;
+  document.getElementById('info-display').style.textShadow = `0 0 8px ${txt}55`;
+  document.querySelectorAll('.btn, #control-col label, .crt-select').forEach(el => {
+    el.style.color = txt; el.style.borderColor = txt + '88'; el.style.textShadow = `0 0 8px ${txt}55`;
+  });
+  document.querySelectorAll('.crt-select option').forEach(el => { el.style.color = txt; el.style.background = bg; });
+  document.getElementById('crt').style.borderColor = txt + '33';
+  document.querySelectorAll('.frame-line').forEach(el => {
+    el.style.color = txt; el.style.textShadow = `0 0 8px ${txt}55`;
+  });
+  document.getElementById('map-display').style.color = txt;
+  document.getElementById('map-display').style.textShadow = `0 0 8px ${txt}55`;
+  document.querySelector('.panel-divider').style.background = txt + '33';
+  document.querySelectorAll('input[type="color"]').forEach(el => {
+    el.style.borderColor = txt + '88';
+  });
+  if (!colorStyleEl) {
+    colorStyleEl = document.createElement('style');
+    document.head.appendChild(colorStyleEl);
+  }
+  colorStyleEl.textContent = `
+    .crt-select { accent-color: ${txt}; }
+  `;
+}
+
+function populateTimezones() {
+  const zones = Intl.supportedValuesOf('timeZone');
+  const sel = document.getElementById('tz-select');
+  for (const z of zones) {
+    const opt = document.createElement('option');
+    opt.value = z;
+    opt.textContent = z.replace(/_/g, ' ');
+    sel.appendChild(opt);
+  }
+
+  const hashTz = location.hash.replace('#tz=', '');
+  if (hashTz && zones.includes(hashTz)) {
+    selectedTz = hashTz;
+  }
+  sel.value = selectedTz;
+}
+
+function changeTz() {
+  selectedTz = document.getElementById('tz-select').value;
+  location.hash = 'tz=' + selectedTz;
+}
+
+window.addEventListener('hashchange', () => {
+  const hashTz = location.hash.replace('#tz=', '');
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: hashTz });
+    selectedTz = hashTz;
+    document.getElementById('tz-select').value = selectedTz;
+  } catch (e) {}
+});
+
+document.querySelectorAll('select').forEach(el => {
+  el.addEventListener('change', () => el.blur());
+});
+document.querySelectorAll('button').forEach(el => {
+  el.addEventListener('mouseup', () => el.blur());
+});
+
+populateTimezones();
+calibrate();
+setInterval(calibrate, 60000);
+requestAnimationFrame(render);
+
+function scaleCrt() {
+  const crt = document.getElementById('crt');
+  crt.style.transform = '';
+  crt.style.transformOrigin = 'top center';
+  const pad = 16;
+  const crtW = crt.scrollWidth;
+  const vpW = window.innerWidth;
+  if (crtW + pad * 2 > vpW) {
+    const s = (vpW - pad * 2) / crtW;
+    crt.style.transform = `scale(${s})`;
+  }
+}
+window.addEventListener('resize', scaleCrt);
+requestAnimationFrame(scaleCrt);
+
+</script>
+</body>
+</html>
