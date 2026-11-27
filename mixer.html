@@ -310,7 +310,8 @@ const W = 80;
 const MIXER_ROWS = 16;
 let actx = null;
 let masterGain = null;
-let analyser = null;
+let analyserL = null;
+let analyserR = null;
 let channels = [];
 let channelIdCounter = 0;
 let soloActive = false;
@@ -324,10 +325,15 @@ function ensureAudio() {
   actx = new (window.AudioContext || window.webkitAudioContext)();
   masterGain = actx.createGain();
   masterGain.gain.value = 1;
-  analyser = actx.createAnalyser();
-  analyser.fftSize = 256;
-  masterGain.connect(analyser);
-  analyser.connect(actx.destination);
+  const splitter = actx.createChannelSplitter(2);
+  analyserL = actx.createAnalyser();
+  analyserL.fftSize = 256;
+  analyserR = actx.createAnalyser();
+  analyserR.fftSize = 256;
+  masterGain.connect(splitter);
+  splitter.connect(analyserL, 0);
+  splitter.connect(analyserR, 1);
+  masterGain.connect(actx.destination);
   enumerateOutputDevices();
 }
 
@@ -886,22 +892,28 @@ const busReceiverSABCode = `
 class BusReceiverSAB extends AudioWorkletProcessor {
   constructor(options) {
     super();
-    const { sab, bufferSize } = options.processorOptions;
+    const { sab, bufferSize, channels } = options.processorOptions;
     this.indices = new Int32Array(sab, 0, 4);
     this.samples = new Float32Array(sab, 16);
     this.bufferSize = bufferSize;
+    this.ch = channels || 1;
   }
   process(inputs, outputs) {
-    const output = outputs[0][0];
-    if (!output) return true;
+    const outL = outputs[0][0];
+    const outR = outputs[0][1];
+    if (!outL) return true;
+    const frames = outL.length;
     const writeIdx = Atomics.load(this.indices, 0);
     const readIdx = Atomics.load(this.indices, 1);
-    let available = (writeIdx - readIdx + this.bufferSize) % this.bufferSize;
-    if (available >= output.length) {
-      for (let i = 0; i < output.length; i++) {
-        output[i] = this.samples[(readIdx + i) % this.bufferSize];
+    const stride = this.ch;
+    let available = ((writeIdx - readIdx + this.bufferSize) % this.bufferSize) / stride;
+    if (available >= frames) {
+      for (let i = 0; i < frames; i++) {
+        const base = (readIdx + i * stride) % this.bufferSize;
+        outL[i] = this.samples[base];
+        if (outR) outR[i] = stride > 1 ? this.samples[(base + 1) % this.bufferSize] : this.samples[base];
       }
-      Atomics.store(this.indices, 1, (readIdx + output.length) % this.bufferSize);
+      Atomics.store(this.indices, 1, (readIdx + frames * stride) % this.bufferSize);
     }
     return true;
   }
@@ -913,27 +925,36 @@ const busReceiverMPCode = `
 class BusReceiverMP extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.ring = new Float32Array(8192);
+    this.ringL = new Float32Array(8192);
+    this.ringR = new Float32Array(8192);
     this.writeIdx = 0;
     this.readIdx = 0;
     this.bufferSize = 8192;
     this.port.onmessage = (e) => {
-      const data = e.data;
-      for (let i = 0; i < data.length; i++) {
-        this.ring[(this.writeIdx + i) % this.bufferSize] = data[i];
+      const msg = e.data;
+      const L = msg.L || msg;
+      const R = msg.R || L;
+      for (let i = 0; i < L.length; i++) {
+        const idx = (this.writeIdx + i) % this.bufferSize;
+        this.ringL[idx] = L[i];
+        this.ringR[idx] = R[i];
       }
-      this.writeIdx = (this.writeIdx + data.length) % this.bufferSize;
+      this.writeIdx = (this.writeIdx + L.length) % this.bufferSize;
     };
   }
   process(inputs, outputs) {
-    const output = outputs[0][0];
-    if (!output) return true;
+    const outL = outputs[0][0];
+    const outR = outputs[0][1];
+    if (!outL) return true;
+    const frames = outL.length;
     let available = (this.writeIdx - this.readIdx + this.bufferSize) % this.bufferSize;
-    if (available >= output.length) {
-      for (let i = 0; i < output.length; i++) {
-        output[i] = this.ring[(this.readIdx + i) % this.bufferSize];
+    if (available >= frames) {
+      for (let i = 0; i < frames; i++) {
+        const idx = (this.readIdx + i) % this.bufferSize;
+        outL[i] = this.ringL[idx];
+        if (outR) outR[i] = this.ringR[idx];
       }
-      this.readIdx = (this.readIdx + output.length) % this.bufferSize;
+      this.readIdx = (this.readIdx + frames) % this.bufferSize;
     }
     return true;
   }
@@ -959,7 +980,7 @@ function initBusDiscovery() {
     const msg = e.data;
     if (msg.type === 'announce' || msg.type === 'heartbeat') {
       const isNew = !busSources[msg.id];
-      busSources[msg.id] = { id: msg.id, name: msg.name, ts: Date.now(), sab: msg.sab || null };
+      busSources[msg.id] = { id: msg.id, name: msg.name, ts: Date.now(), sab: msg.sab || null, channels: msg.channels || 1 };
       if (isNew) refreshBusOptions();
     } else if (msg.type === 'leave') {
       delete busSources[msg.id];
@@ -970,7 +991,11 @@ function initBusDiscovery() {
     } else if (msg.type === 'audio') {
       channels.forEach(ch => {
         if (ch.busSourceId === msg.id && ch.busReceiverNode && ch.busReceiverNode.port) {
-          ch.busReceiverNode.port.postMessage(msg.samples);
+          if (msg.samplesL) {
+            ch.busReceiverNode.port.postMessage({ L: msg.samplesL, R: msg.samplesR });
+          } else {
+            ch.busReceiverNode.port.postMessage(msg.samples);
+          }
         }
       });
     }
@@ -1004,12 +1029,12 @@ async function connectChannelBus(ch, sourceId) {
   const useSAB = src.sab && typeof SharedArrayBuffer !== 'undefined' && crossOriginIsolated;
   if (useSAB) {
     ch.busReceiverNode = new AudioWorkletNode(actx, 'bus-receiver-sab', {
-      processorOptions: { sab: src.sab, bufferSize: BUS_BUFFER_SIZE },
-      outputChannelCount: [1]
+      processorOptions: { sab: src.sab, bufferSize: BUS_BUFFER_SIZE, channels: src.channels || 1 },
+      outputChannelCount: [2]
     });
   } else {
     ch.busReceiverNode = new AudioWorkletNode(actx, 'bus-receiver-mp', {
-      outputChannelCount: [1]
+      outputChannelCount: [2]
     });
     busChannel.postMessage({ type: 'subscribe', subscriberId: 'mixer_' + ch.id, sourceId: sourceId });
   }
@@ -1041,18 +1066,22 @@ async function setChannelInput(id, val) {
 
 // ── METERING ────────────────────────────────────
 function drawMeters() {
-  const timeData = new Float32Array(analyser ? analyser.fftSize : 128);
-
-  if (analyser) {
-    analyser.getFloatTimeDomainData(timeData);
-    let peak = 0;
-    for (let i = 0; i < timeData.length; i++) peak = Math.max(peak, Math.abs(timeData[i]));
-    const db = 20 * Math.log10(Math.max(peak, 0.0001));
-    const pct = Math.max(0, Math.min(100, (db + 60) / 60 * 100));
+  if (analyserL) {
+    const bufL = new Float32Array(analyserL.fftSize);
+    const bufR = new Float32Array(analyserR.fftSize);
+    analyserL.getFloatTimeDomainData(bufL);
+    analyserR.getFloatTimeDomainData(bufR);
+    let peakL = 0, peakR = 0;
+    for (let i = 0; i < bufL.length; i++) peakL = Math.max(peakL, Math.abs(bufL[i]));
+    for (let i = 0; i < bufR.length; i++) peakR = Math.max(peakR, Math.abs(bufR[i]));
+    const dbL = 20 * Math.log10(Math.max(peakL, 0.0001));
+    const dbR = 20 * Math.log10(Math.max(peakR, 0.0001));
+    const pctL = Math.max(0, Math.min(100, (dbL + 60) / 60 * 100));
+    const pctR = Math.max(0, Math.min(100, (dbR + 60) / 60 * 100));
     const mL = document.getElementById('master-meter-l');
     const mR = document.getElementById('master-meter-r');
-    if (mL) mL.style.height = pct + '%';
-    if (mR) mR.style.height = pct + '%';
+    if (mL) mL.style.height = pctL + '%';
+    if (mR) mR.style.height = pctR + '%';
   }
 
   for (const ch of channels) {
