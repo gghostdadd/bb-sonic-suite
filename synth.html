@@ -540,8 +540,9 @@ input[type="range"]::-webkit-slider-thumb {
       </div>
     </div>
 
-    <!-- COLORS -->
+    <!-- COLORS / PRESET -->
     <div class="color-row">
+      <button class="btn" id="btn-preset" onclick="copyPresetUrl()" style="letter-spacing:1px;">⎘ PRESET URL</button>
       <span>BG:</span><input type="color" id="color-bg" value="#0c0a02" onchange="applyColors()">
       <span>TEXT:</span><input type="color" id="color-text" value="#e0e0e0" onchange="applyColors()">
     </div>
@@ -2121,6 +2122,59 @@ ensureAudio = function() {
 };
 
 initBusChannel();
+
+// ── URL PRESETS ──────────────────────────────────
+const PRESET_PARAMS = [
+  ['osc', 'osc-type'],     ['wp', 'wave-pos'],      ['oct', 'osc-octave'],
+  ['det', 'osc-detune'],   ['ft', 'filter-type'],   ['fs', 'filter-slope'],
+  ['fc', 'filter-cutoff'], ['fr', 'filter-res'],    ['fe', 'filter-env'],
+  ['ea', 'env-a'],         ['ed', 'env-d'],         ['es', 'env-s'],
+  ['er', 'env-r'],         ['vs', 'vel-sens'],      ['vc', 'voice-count'],
+  ['ls', 'lfo-shape'],     ['lr', 'lfo-rate'],      ['lp', 'lfo-pitch'],
+  ['lf', 'lfo-filter'],    ['la', 'lfo-amp'],
+  ['dt', 'delay-time'],    ['df', 'delay-fdbk'],    ['dm', 'delay-mix'],
+  ['rs', 'reverb-size'],   ['rd', 'reverb-damp'],   ['rm', 'reverb-mix'],
+  ['mv', 'master-vol'],
+];
+
+function presetToHash() {
+  const parts = [];
+  for (const [key, id] of PRESET_PARAMS) {
+    const el = document.getElementById(id);
+    if (el) parts.push(key + '=' + encodeURIComponent(el.value));
+  }
+  return '#' + parts.join('&');
+}
+
+function copyPresetUrl() {
+  const url = location.origin + location.pathname + presetToHash();
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.getElementById('btn-preset');
+    btn.textContent = '✓ COPIED';
+    setTimeout(() => { btn.textContent = '⎘ PRESET URL'; }, 1500);
+  });
+}
+
+function loadPresetFromHash() {
+  if (!location.hash || location.hash.length < 2) return;
+  const pairs = location.hash.slice(1).split('&');
+  const map = {};
+  for (const p of pairs) {
+    const [k, v] = p.split('=');
+    if (k && v !== undefined) map[k] = decodeURIComponent(v);
+  }
+  for (const [key, id] of PRESET_PARAMS) {
+    if (key in map) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      el.value = map[key];
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+}
+
+loadPresetFromHash();
 
 // ── INIT ─────────────────────────────────────────
 drawEnvCurve();
