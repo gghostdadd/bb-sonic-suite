@@ -2125,25 +2125,25 @@ initBusChannel();
 
 // ── URL PRESETS ──────────────────────────────────
 const PRESET_PARAMS = [
-  ['osc', 'osc-type'],     ['wp', 'wave-pos'],      ['oct', 'osc-octave'],
-  ['det', 'osc-detune'],   ['ft', 'filter-type'],   ['fs', 'filter-slope'],
-  ['fc', 'filter-cutoff'], ['fr', 'filter-res'],    ['fe', 'filter-env'],
-  ['ea', 'env-a'],         ['ed', 'env-d'],         ['es', 'env-s'],
-  ['er', 'env-r'],         ['vs', 'vel-sens'],      ['vc', 'voice-count'],
-  ['ls', 'lfo-shape'],     ['lr', 'lfo-rate'],      ['lp', 'lfo-pitch'],
-  ['lf', 'lfo-filter'],    ['la', 'lfo-amp'],
-  ['dt', 'delay-time'],    ['df', 'delay-fdbk'],    ['dm', 'delay-mix'],
-  ['rs', 'reverb-size'],   ['rd', 'reverb-damp'],   ['rm', 'reverb-mix'],
-  ['mv', 'master-vol'],
+  ['osc', 'osc-type', 'classic'],  ['wp', 'wave-pos', '0'],       ['oct', 'osc-octave', '0'],
+  ['det', 'osc-detune', '0'],      ['ft', 'filter-type', 'lowpass'], ['fs', 'filter-slope', '12'],
+  ['fc', 'filter-cutoff', '870'],  ['fr', 'filter-res', '1'],     ['fe', 'filter-env', '0'],
+  ['ea', 'env-a', '10'],           ['ed', 'env-d', '200'],        ['es', 'env-s', '70'],
+  ['er', 'env-r', '300'],          ['vs', 'vel-sens', '50'],      ['vc', 'voice-count', '8'],
+  ['ls', 'lfo-shape', 'sine'],     ['lr', 'lfo-rate', '20'],      ['lp', 'lfo-pitch', '0'],
+  ['lf', 'lfo-filter', '0'],       ['la', 'lfo-amp', '0'],
+  ['dt', 'delay-time', '300'],     ['df', 'delay-fdbk', '40'],    ['dm', 'delay-mix', '0'],
+  ['rs', 'reverb-size', '50'],     ['rd', 'reverb-damp', '50'],   ['rm', 'reverb-mix', '0'],
+  ['mv', 'master-vol', '0'],
 ];
 
 function presetToHash() {
   const parts = [];
-  for (const [key, id] of PRESET_PARAMS) {
+  for (const [key, id, def] of PRESET_PARAMS) {
     const el = document.getElementById(id);
-    if (el) parts.push(key + '=' + encodeURIComponent(el.value));
+    if (el && el.value !== def) parts.push(key + '=' + encodeURIComponent(el.value));
   }
-  return '#' + parts.join('&');
+  return parts.length ? '#' + parts.join('&') : '';
 }
 
 function copyPresetUrl() {
