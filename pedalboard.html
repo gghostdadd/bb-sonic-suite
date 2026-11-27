@@ -429,6 +429,7 @@ input[type="file"] { display: none; }
           <pre class="meter-bar-ascii" id="meter-ascii">│░░░░░░░░░░░░░░░░░░░░│</pre>
         </div>
         <div class="chain-display" id="chain-info">CHAIN: ──</div>
+        <button class="btn" id="btn-preset" onclick="copyPresetUrl()" style="margin-top:6px; letter-spacing:1px; font-size:11px;">⎘ PRESET URL</button>
       </div>
     </div>
 
@@ -2086,11 +2087,71 @@ function drawMeter() {
 }
 
 // ══════════════════════════════════════════
+//  URL PRESETS
+// ══════════════════════════════════════════
+function presetToHash() {
+  if (!pedalOrder.length) return '';
+  const segments = [];
+  for (const id of pedalOrder) {
+    const p = pedals.find(x => x.id === id);
+    if (!p) continue;
+    const paramVals = (p.knobDefs || []).map(k => p.params[k.param]);
+    const defaults = (p.knobDefs || []).map(k => p.defaultParams[k.param]);
+    let parts = [p.type, p.enabled ? 1 : 0];
+    let hasNonDefault = false;
+    for (let i = paramVals.length - 1; i >= 0; i--) {
+      if (paramVals[i] !== defaults[i]) { hasNonDefault = true; break; }
+    }
+    if (hasNonDefault) {
+      for (let i = 0; i < paramVals.length; i++) parts.push(paramVals[i]);
+    }
+    segments.push(parts.join('.'));
+  }
+  return '#' + segments.join('-');
+}
+
+function copyPresetUrl() {
+  const url = location.origin + location.pathname + presetToHash();
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.getElementById('btn-preset');
+    btn.textContent = '✓ COPIED';
+    setTimeout(() => { btn.textContent = '⎘ PRESET URL'; }, 1500);
+  });
+}
+
+function loadPresetFromHash() {
+  if (!location.hash || location.hash.length < 2) return false;
+  const segments = location.hash.slice(1).split('-');
+  if (!segments.length) return false;
+  for (const seg of segments) {
+    const parts = seg.split('.');
+    const type = parts[0];
+    if (!PEDAL_TYPES[type]) continue;
+    addSlot(type);
+    const p = pedals[pedals.length - 1];
+    if (parts[1] === '1') { p.enabled = true; }
+    if (parts.length > 2) {
+      const knobs = p.knobDefs || [];
+      for (let i = 0; i < knobs.length && (i + 2) < parts.length; i++) {
+        const val = parseInt(parts[i + 2]);
+        if (!isNaN(val)) {
+          const fn = 'update' + knobs[i].param[0].toUpperCase() + knobs[i].param.slice(1);
+          if (p[fn]) p[fn](val);
+        }
+      }
+    }
+  }
+  rebuildChain();
+  renderBoard();
+  return true;
+}
+
+// ══════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════
 document.addEventListener('click', () => ensureAudio(), { once: true });
 
-addSlot('sd1');
+if (!loadPresetFromHash()) addSlot('sd1');
 </script>
 </body>
 </html>
