@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BB MIXER</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #000;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: 20px 10px;
+  font-family: Menlo, Consolas, 'Courier New', monospace;
+}
+
+#crt {
+  position: relative;
+  background: #0c0a02;
+  border: 1px solid #333;
+  padding: 28px 36px;
+  width: min-content;
+}
+
+#crt::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px);
+  pointer-events: none;
+  z-index: 10;
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  93% { opacity: 0.92; }
+  94% { opacity: 1; }
+}
+#crt { animation: flicker 8s infinite; }
+
+#display {
+  font-size: 13px;
+  line-height: 1.45;
+  color: #e0e0e0;
+  white-space: pre;
+  user-select: none;
+  text-shadow: 0 0 8px rgba(255,255,255,0.2);
+}
+
+#mixer-controls, #bottom-controls {
+  position: absolute;
+  overflow: hidden;
+}
+
+#mixer-controls {
+  padding-top: 4px;
+}
+
+.mixer-area {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+}
+
+.channels-scroll {
+  display: flex;
+  overflow-x: auto;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #333 #111;
+}
+.channels-scroll::-webkit-scrollbar { height: 5px; }
+.channels-scroll::-webkit-scrollbar-track { background: #111; }
+.channels-scroll::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+
+.channel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 76px;
+  min-width: 76px;
+  border: 1px solid #333;
+  padding: 4px;
+  gap: 3px;
+  background: #0a0900;
+  position: relative;
+}
+
+.channel.master {
+  border-color: #555;
+  background: #0d0b02;
+  width: 90px;
+  min-width: 90px;
+  margin-left: 4px;
+  height: 100%;
+}
+
+.ch-label {
+  font-size: 10px;
+  color: #999;
+  letter-spacing: 1px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.ch-label.master-label {
+  color: #e8c840;
+  text-shadow: 0 0 6px rgba(232,200,64,0.3);
+}
+
+.ch-remove {
+  font-size: 9px;
+  color: #555;
+  cursor: pointer;
+  position: absolute;
+  top: 2px;
+  right: 3px;
+}
+.ch-remove:hover { color: #ff4444; }
+
+.knob-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+}
+
+.knob-label {
+  font-size: 8px;
+  color: #666;
+  width: 16px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.knob-val {
+  font-size: 8px;
+  color: #777;
+  width: 20px;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+.fader-area {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 90px;
+  width: 100%;
+}
+
+.meter-col {
+  width: 8px;
+  flex-shrink: 0;
+}
+
+.meter-bar {
+  width: 6px;
+  height: 100%;
+  background: #111;
+  border: 1px solid #333;
+  position: relative;
+  overflow: hidden;
+}
+
+.meter-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #4a4;
+  transition: height 0.05s;
+}
+
+.fader-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.fader-wrap {
+  flex: 1;
+  width: 20px;
+  overflow: hidden;
+}
+
+.fader-wrap input[type="range"] {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 20px;
+  height: 100%;
+  -webkit-appearance: none;
+  background: transparent;
+  outline: none;
+  margin: 0;
+  padding: 0;
+}
+.fader-wrap input[type="range"]::-webkit-slider-runnable-track {
+  width: 4px;
+  background: #333;
+  border-radius: 2px;
+}
+.fader-wrap input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px; height: 8px;
+  background: #aaa;
+  border: 1px solid #666;
+  cursor: pointer;
+  margin-left: -7px;
+}
+
+.fader-val {
+  font-size: 9px;
+  color: #888;
+  text-align: center;
+  margin-top: 1px;
+  white-space: nowrap;
+}
+
+.ch-buttons {
+  display: flex;
+  gap: 2px;
+}
+
+.btn {
+  background: transparent;
+  color: #e0e0e0;
+  border: 1px solid #444;
+  font-family: Menlo, Consolas, monospace;
+  font-size: 9px;
+  padding: 2px 5px;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  text-shadow: 0 0 8px rgba(255,255,255,0.2);
+}
+.btn:hover { background: rgba(255,255,255,0.08); border-color: #aaa; }
+
+.btn-mute.active { color: #ff4444; border-color: #ff4444; text-shadow: 0 0 6px rgba(255,68,68,0.5); }
+.btn-solo.active { color: #44ff44; border-color: #44ff44; text-shadow: 0 0 6px rgba(68,255,68,0.5); }
+
+.crt-select {
+  background: #0c0a02;
+  color: #e0e0e0;
+  border: 1px solid #444;
+  font-family: Menlo, Consolas, monospace;
+  font-size: 8px;
+  padding: 2px 1px;
+  cursor: pointer;
+  width: 100%;
+  text-shadow: 0 0 8px rgba(255,255,255,0.15);
+}
+
+.add-channel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  align-self: stretch;
+  border: 1px dashed #333;
+  cursor: pointer;
+  color: #555;
+  font-size: 16px;
+  margin-left: 2px;
+}
+.add-channel:hover { border-color: #888; color: #aaa; }
+
+.master-spacer {
+  flex: 1;
+}
+
+#bottom-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-preset {
+  letter-spacing: 1px;
+}
+
+.output-row {
+  width: 100%;
+}
+</style>
+</head>
+<body>
+<div id="crt">
+  <pre id="display"></pre>
+  <div id="mixer-controls">
+    <div class="mixer-area">
+      <div class="channels-scroll" id="channels"></div>
+      <div class="add-channel" onclick="addChannel()">+</div>
+      <div id="master-strip"></div>
+    </div>
+  </div>
+  <div id="bottom-controls">
+    <button class="btn btn-preset" id="btn-preset" onclick="copyPresetUrl()">⎘ PRESET URL</button>
+  </div>
+</div>
+
+<script>
+const W = 80;
+const MIXER_ROWS = 16;
+let actx = null;
+let masterGain = null;
+let analyser = null;
+let channels = [];
+let channelIdCounter = 0;
+let soloActive = false;
+let masterFaderDb = 0;
+let mixerStartLine = 0;
+let bottomStartLine = 0;
+let totalLines = 0;
+
+function ensureAudio() {
+  if (actx) return;
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = actx.createGain();
+  masterGain.gain.value = 1;
+  analyser = actx.createAnalyser();
+  analyser.fftSize = 256;
+  masterGain.connect(analyser);
+  analyser.connect(actx.destination);
+  enumerateOutputDevices();
+}
+
+document.addEventListener('click', () => ensureAudio(), { once: true });
+
+function pad(s)    { return '║' + s + ' '.repeat(Math.max(0, W - s.length)) + '║'; }
+function center(s) { const l = Math.floor((W - s.length) / 2); return '║' + ' '.repeat(l) + s + ' '.repeat(Math.max(0, W - s.length - l)) + '║'; }
+function hBar(ch)  { return '╠' + ch.repeat(W) + '╣'; }
+
+function render() {
+  const lines = [];
+
+  lines.push('╔' + '═'.repeat(W) + '╗');
+  lines.push(pad(''));
+  lines.push(center('B B   M I X E R'));
+  lines.push(center('v1.0'));
+  lines.push(pad(''));
+  lines.push(hBar('═'));
+  lines.push(pad(''));
+  lines.push(pad('  CH: ' + channels.length + '    SOLO: ' + (soloActive ? 'ON' : '──') + '    MASTER: ' + fmtDb(masterFaderDb) + ' dB'));
+  lines.push(pad(''));
+  lines.push(hBar('─'));
+
+  mixerStartLine = lines.length;
+  for (let i = 0; i < MIXER_ROWS; i++) lines.push(pad(''));
+
+  lines.push(hBar('─'));
+
+  bottomStartLine = lines.length;
+  lines.push(pad(''));
+
+  lines.push('╚' + '═'.repeat(W) + '╝');
+
+  totalLines = lines.length;
+  document.getElementById('display').textContent = lines.join('\n');
+
+  positionControls();
+}
+
+function positionControls() {
+  const displayEl = document.getElementById('display');
+  const crtEl = document.getElementById('crt');
+  if (!displayEl.firstChild) return;
+
+  const lineH = displayEl.scrollHeight / totalLines;
+  const crtRect = crtEl.getBoundingClientRect();
+
+  const textNode = displayEl.firstChild;
+  const range = document.createRange();
+  range.setStart(textNode, 1);
+  range.setEnd(textNode, 2);
+  const leftRect = range.getBoundingClientRect();
+
+  const firstNl = displayEl.textContent.indexOf('\n');
+  range.setStart(textNode, firstNl - 1);
+  range.setEnd(textNode, firstNl);
+  const rightRect = range.getBoundingClientRect();
+
+  const padLeft = (leftRect.right - crtRect.left) + 'px';
+  const padRight = (crtRect.right - rightRect.left) + 'px';
+  const displayTop = displayEl.offsetTop;
+
+  const mixerCtrl = document.getElementById('mixer-controls');
+  mixerCtrl.style.left = padLeft;
+  mixerCtrl.style.right = padRight;
+  mixerCtrl.style.top = (displayTop + mixerStartLine * lineH) + 'px';
+  mixerCtrl.style.height = (MIXER_ROWS * lineH) + 'px';
+
+  const bottomCtrl = document.getElementById('bottom-controls');
+  bottomCtrl.style.left = padLeft;
+  bottomCtrl.style.right = padRight;
+  bottomCtrl.style.top = (displayTop + bottomStartLine * lineH) + 'px';
+  bottomCtrl.style.height = lineH + 'px';
+}
+
+function fmtDb(v) {
+  if (v <= -60) return '-∞';
+  return (v > 0 ? '+' : '') + v.toFixed(0);
+}
+
+function dbToGain(db) {
+  if (db <= -60) return 0;
+  return Math.pow(10, db / 20);
+}
+
+function fmtEq(v) { return (v > 0 ? '+' : '') + v; }
+function fmtPan(v) { return v === 0 ? 'C' : (v < 0 ? 'L' + Math.abs(v) : 'R' + v); }
+
+// ── KNOB ───────────────────────────────────────
+function createKnob(opts) {
+  const SIZE = 28;
+  const dpr = window.devicePixelRatio || 1;
+  const canvas = document.createElement('canvas');
+  canvas.width = SIZE * dpr;
+  canvas.height = SIZE * dpr;
+  canvas.style.width = SIZE + 'px';
+  canvas.style.height = SIZE + 'px';
+  canvas.style.cursor = 'ns-resize';
+  canvas.style.flexShrink = '0';
+
+  let value = opts.value ?? 0;
+  const min = opts.min ?? -12;
+  const max = opts.max ?? 12;
+  const def = opts.defaultValue ?? 0;
+  const step = opts.step ?? 1;
+  const onChange = opts.onChange || (() => {});
+
+  const SA = Math.PI * 0.75;
+  const EA = Math.PI * 2.25;
+
+  function draw() {
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const cx = SIZE / 2;
+    const cy = SIZE / 2;
+    const r = SIZE / 2 - 3;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#555';
+    ctx.stroke();
+
+    const pct = (value - min) / (max - min);
+    const angle = SA + pct * (EA - SA);
+    const lx = cx + r * 0.45 * Math.cos(angle);
+    const ly = cy + r * 0.45 * Math.sin(angle);
+    const ex = cx + r * 0.95 * Math.cos(angle);
+    const ey = cy + r * 0.95 * Math.sin(angle);
+    ctx.beginPath();
+    ctx.moveTo(lx, ly);
+    ctx.lineTo(ex, ey);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ccc';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+
+  canvas.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    let lastY = e.clientY;
+    const rng = max - min;
+
+    const onMove = (e) => {
+      const dy = lastY - e.clientY;
+      lastY = e.clientY;
+      const raw = value + dy * rng / 150;
+      value = Math.max(min, Math.min(max, Math.round(raw / step) * step));
+      onChange(value);
+      draw();
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  canvas.addEventListener('dblclick', () => {
+    value = def;
+    onChange(def);
+    draw();
+  });
+
+  draw();
+
+  return {
+    canvas,
+    getValue: () => value,
+    setValue: (v) => { value = Math.max(min, Math.min(max, v)); draw(); },
+    draw
+  };
+}
+
+function makeKnobRow(label, knob, valText, valId) {
+  const row = document.createElement('div');
+  row.className = 'knob-row';
+  const lbl = document.createElement('span');
+  lbl.className = 'knob-label';
+  lbl.textContent = label;
+  const val = document.createElement('span');
+  val.className = 'knob-val';
+  val.id = valId;
+  val.textContent = valText;
+  row.appendChild(lbl);
+  row.appendChild(knob.canvas);
+  row.appendChild(val);
+  return row;
+}
+
+// ── CHANNELS ───────────────────────────────────
+function addChannel() {
+  ensureAudio();
+  const id = 'ch_' + (channelIdCounter++);
+
+  const inputGain = actx.createGain();
+  inputGain.gain.value = 1;
+
+  const loEq = actx.createBiquadFilter();
+  loEq.type = 'lowshelf'; loEq.frequency.value = 80; loEq.gain.value = 0;
+
+  const midEq = actx.createBiquadFilter();
+  midEq.type = 'peaking'; midEq.frequency.value = 1000; midEq.Q.value = 1; midEq.gain.value = 0;
+
+  const hiEq = actx.createBiquadFilter();
+  hiEq.type = 'highshelf'; hiEq.frequency.value = 12000; hiEq.gain.value = 0;
+
+  const pan = actx.createStereoPanner();
+  pan.pan.value = 0;
+
+  const fader = actx.createGain();
+  fader.gain.value = 1;
+
+  const chAnalyser = actx.createAnalyser();
+  chAnalyser.fftSize = 256;
+
+  inputGain.connect(loEq);
+  loEq.connect(midEq);
+  midEq.connect(hiEq);
+  hiEq.connect(pan);
+  pan.connect(fader);
+  fader.connect(chAnalyser);
+  chAnalyser.connect(masterGain);
+
+  const ch = {
+    id, inputGain,
+    nodes: { loEq, midEq, hiEq, pan, fader, chAnalyser },
+    params: { faderDb: 0, pan: 0, loGain: 0, midGain: 0, hiGain: 0 },
+    muted: false, soloed: false,
+    busSourceId: null, busReceiverNode: null,
+    knobs: {}
+  };
+
+  channels.push(ch);
+  updateSoloState();
+  renderChannels();
+  render();
+}
+
+function removeChannel(id) {
+  const idx = channels.findIndex(c => c.id === id);
+  if (idx === -1) return;
+  const ch = channels[idx];
+  disconnectChannelBus(ch);
+  try { ch.inputGain.disconnect(); } catch(e) {}
+  try { ch.nodes.loEq.disconnect(); } catch(e) {}
+  try { ch.nodes.midEq.disconnect(); } catch(e) {}
+  try { ch.nodes.hiEq.disconnect(); } catch(e) {}
+  try { ch.nodes.pan.disconnect(); } catch(e) {}
+  try { ch.nodes.fader.disconnect(); } catch(e) {}
+  try { ch.nodes.chAnalyser.disconnect(); } catch(e) {}
+  channels.splice(idx, 1);
+  updateSoloState();
+  renderChannels();
+  render();
+}
+
+function updateSoloState() {
+  soloActive = channels.some(c => c.soloed);
+  for (const ch of channels) {
+    if (!actx) return;
+    let gain = dbToGain(ch.params.faderDb);
+    if (ch.muted) gain = 0;
+    else if (soloActive && !ch.soloed) gain = 0;
+    ch.nodes.fader.gain.setTargetAtTime(gain, actx.currentTime, 0.005);
+  }
+}
+
+function toggleMute(id) {
+  const ch = channels.find(c => c.id === id);
+  if (!ch) return;
+  ch.muted = !ch.muted;
+  updateSoloState();
+  renderChannels();
+  render();
+}
+
+function toggleSolo(id) {
+  const ch = channels.find(c => c.id === id);
+  if (!ch) return;
+  ch.soloed = !ch.soloed;
+  updateSoloState();
+  renderChannels();
+  render();
+}
+
+function setChannelFader(id, val) {
+  const ch = channels.find(c => c.id === id);
+  if (!ch) return;
+  ch.params.faderDb = parseFloat(val);
+  updateSoloState();
+  const el = document.getElementById(id + '-fader-val');
+  if (el) el.textContent = fmtDb(ch.params.faderDb);
+}
+
+function setMasterFader(val) {
+  masterFaderDb = parseFloat(val);
+  if (masterGain) masterGain.gain.setTargetAtTime(dbToGain(masterFaderDb), actx.currentTime, 0.005);
+  const el = document.getElementById('master-fader-val');
+  if (el) el.textContent = fmtDb(masterFaderDb);
+  render();
+}
+
+function renderChannels() {
+  const container = document.getElementById('channels');
+  container.innerHTML = '';
+
+  channels.forEach((ch, i) => {
+    const el = document.createElement('div');
+    el.className = 'channel';
+
+    const close = document.createElement('span');
+    close.className = 'ch-remove';
+    close.textContent = '✕';
+    close.title = 'Remove';
+    close.onclick = () => removeChannel(ch.id);
+    el.appendChild(close);
+
+    const label = document.createElement('div');
+    label.className = 'ch-label';
+    label.textContent = 'CH ' + (i + 1);
+    el.appendChild(label);
+
+    const hiKnob = createKnob({
+      min: -12, max: 12, value: ch.params.hiGain, defaultValue: 0, step: 1,
+      onChange: (v) => {
+        ch.params.hiGain = v;
+        ch.nodes.hiEq.gain.setTargetAtTime(v, actx.currentTime, 0.005);
+        const ve = document.getElementById(ch.id + '-hi-val');
+        if (ve) ve.textContent = fmtEq(v);
+      }
+    });
+    ch.knobs.hi = hiKnob;
+    el.appendChild(makeKnobRow('HI', hiKnob, fmtEq(ch.params.hiGain), ch.id + '-hi-val'));
+
+    const mdKnob = createKnob({
+      min: -12, max: 12, value: ch.params.midGain, defaultValue: 0, step: 1,
+      onChange: (v) => {
+        ch.params.midGain = v;
+        ch.nodes.midEq.gain.setTargetAtTime(v, actx.currentTime, 0.005);
+        const ve = document.getElementById(ch.id + '-mid-val');
+        if (ve) ve.textContent = fmtEq(v);
+      }
+    });
+    ch.knobs.md = mdKnob;
+    el.appendChild(makeKnobRow('MD', mdKnob, fmtEq(ch.params.midGain), ch.id + '-mid-val'));
+
+    const loKnob = createKnob({
+      min: -12, max: 12, value: ch.params.loGain, defaultValue: 0, step: 1,
+      onChange: (v) => {
+        ch.params.loGain = v;
+        ch.nodes.loEq.gain.setTargetAtTime(v, actx.currentTime, 0.005);
+        const ve = document.getElementById(ch.id + '-lo-val');
+        if (ve) ve.textContent = fmtEq(v);
+      }
+    });
+    ch.knobs.lo = loKnob;
+    el.appendChild(makeKnobRow('LO', loKnob, fmtEq(ch.params.loGain), ch.id + '-lo-val'));
+
+    const panKnob = createKnob({
+      min: -100, max: 100, value: ch.params.pan, defaultValue: 0, step: 1,
+      onChange: (v) => {
+        ch.params.pan = v;
+        ch.nodes.pan.pan.setTargetAtTime(v / 100, actx.currentTime, 0.005);
+        const ve = document.getElementById(ch.id + '-pan-val');
+        if (ve) ve.textContent = fmtPan(v);
+      }
+    });
+    ch.knobs.pan = panKnob;
+    el.appendChild(makeKnobRow('PAN', panKnob, fmtPan(ch.params.pan), ch.id + '-pan-val'));
+
+    const faderArea = document.createElement('div');
+    faderArea.className = 'fader-area';
+
+    const meterCol = document.createElement('div');
+    meterCol.className = 'meter-col';
+    const meterBar = document.createElement('div');
+    meterBar.className = 'meter-bar';
+    const meterFill = document.createElement('div');
+    meterFill.className = 'meter-fill';
+    meterFill.id = ch.id + '-meter';
+    meterBar.appendChild(meterFill);
+    meterCol.appendChild(meterBar);
+    faderArea.appendChild(meterCol);
+
+    const faderCol = document.createElement('div');
+    faderCol.className = 'fader-col';
+    const faderWrap = document.createElement('div');
+    faderWrap.className = 'fader-wrap';
+    const faderInput = document.createElement('input');
+    faderInput.type = 'range';
+    faderInput.min = -60; faderInput.max = 12; faderInput.step = 1;
+    faderInput.value = ch.params.faderDb;
+    faderInput.oninput = function() { setChannelFader(ch.id, this.value); };
+    faderInput.ondblclick = function() { this.value = 0; setChannelFader(ch.id, 0); };
+    faderWrap.appendChild(faderInput);
+    faderCol.appendChild(faderWrap);
+    const faderVal = document.createElement('div');
+    faderVal.className = 'fader-val';
+    faderVal.id = ch.id + '-fader-val';
+    faderVal.textContent = fmtDb(ch.params.faderDb);
+    faderCol.appendChild(faderVal);
+    faderArea.appendChild(faderCol);
+    el.appendChild(faderArea);
+
+    const btns = document.createElement('div');
+    btns.className = 'ch-buttons';
+    const muteBtn = document.createElement('button');
+    muteBtn.className = 'btn btn-mute' + (ch.muted ? ' active' : '');
+    muteBtn.textContent = 'M';
+    muteBtn.onclick = () => toggleMute(ch.id);
+    const soloBtn = document.createElement('button');
+    soloBtn.className = 'btn btn-solo' + (ch.soloed ? ' active' : '');
+    soloBtn.textContent = 'S';
+    soloBtn.onclick = () => toggleSolo(ch.id);
+    btns.appendChild(muteBtn);
+    btns.appendChild(soloBtn);
+    el.appendChild(btns);
+
+    const inputDiv = document.createElement('div');
+    inputDiv.style.width = '100%';
+    const sel = document.createElement('select');
+    sel.className = 'crt-select';
+    sel.onchange = function() { setChannelInput(ch.id, this.value); };
+    const defOpt = document.createElement('option');
+    defOpt.value = ''; defOpt.textContent = '── IN ──';
+    sel.appendChild(defOpt);
+    for (const sid of Object.keys(busSources)) {
+      const opt = document.createElement('option');
+      opt.value = 'bus:' + sid;
+      opt.textContent = busSources[sid].name;
+      if (ch.busSourceId === sid) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    inputDiv.appendChild(sel);
+    el.appendChild(inputDiv);
+
+    container.appendChild(el);
+  });
+
+  renderMaster();
+}
+
+function renderMaster() {
+  const el = document.getElementById('master-strip');
+  el.innerHTML = '';
+
+  const strip = document.createElement('div');
+  strip.className = 'channel master';
+
+  const label = document.createElement('div');
+  label.className = 'ch-label master-label';
+  label.textContent = 'MASTER';
+  strip.appendChild(label);
+
+  const spacer = document.createElement('div');
+  spacer.className = 'master-spacer';
+  strip.appendChild(spacer);
+
+  const faderArea = document.createElement('div');
+  faderArea.className = 'fader-area';
+
+  const mL = document.createElement('div');
+  mL.className = 'meter-col';
+  const mLBar = document.createElement('div');
+  mLBar.className = 'meter-bar';
+  const mLFill = document.createElement('div');
+  mLFill.className = 'meter-fill';
+  mLFill.id = 'master-meter-l';
+  mLBar.appendChild(mLFill);
+  mL.appendChild(mLBar);
+  faderArea.appendChild(mL);
+
+  const mR = document.createElement('div');
+  mR.className = 'meter-col';
+  const mRBar = document.createElement('div');
+  mRBar.className = 'meter-bar';
+  const mRFill = document.createElement('div');
+  mRFill.className = 'meter-fill';
+  mRFill.id = 'master-meter-r';
+  mRBar.appendChild(mRFill);
+  mR.appendChild(mRBar);
+  faderArea.appendChild(mR);
+
+  const faderCol = document.createElement('div');
+  faderCol.className = 'fader-col';
+  const faderWrap = document.createElement('div');
+  faderWrap.className = 'fader-wrap';
+  const faderInput = document.createElement('input');
+  faderInput.type = 'range';
+  faderInput.min = -60; faderInput.max = 12; faderInput.step = 1;
+  faderInput.value = masterFaderDb;
+  faderInput.oninput = function() { setMasterFader(this.value); };
+  faderInput.ondblclick = function() { this.value = 0; setMasterFader(0); };
+  faderWrap.appendChild(faderInput);
+  faderCol.appendChild(faderWrap);
+  const faderVal = document.createElement('div');
+  faderVal.className = 'fader-val';
+  faderVal.id = 'master-fader-val';
+  faderVal.textContent = fmtDb(masterFaderDb);
+  faderCol.appendChild(faderVal);
+  faderArea.appendChild(faderCol);
+  strip.appendChild(faderArea);
+
+  const outDiv = document.createElement('div');
+  outDiv.className = 'output-row';
+  const outSel = document.createElement('select');
+  outSel.className = 'crt-select';
+  outSel.onchange = function() { setOutputDevice(this.value); };
+  const outDef = document.createElement('option');
+  outDef.value = ''; outDef.textContent = '── OUT ──';
+  outSel.appendChild(outDef);
+  for (const d of outputDevices) {
+    const opt = document.createElement('option');
+    opt.value = d.deviceId;
+    opt.textContent = d.label || ('Speaker ' + d.deviceId.slice(0, 4));
+    if (d.deviceId === currentOutputId) opt.selected = true;
+    outSel.appendChild(opt);
+  }
+  outDiv.appendChild(outSel);
+  strip.appendChild(outDiv);
+
+  el.appendChild(strip);
+}
+
+// ── OUTPUT DEVICE ───────────────────────────────
+let outputDevices = [];
+let currentOutputId = '';
+
+async function enumerateOutputDevices() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    outputDevices = devices.filter(d => d.kind === 'audiooutput');
+    renderMaster();
+  } catch(e) {}
+}
+
+async function setOutputDevice(deviceId) {
+  currentOutputId = deviceId;
+  if (actx && actx.setSinkId && deviceId) {
+    try { await actx.setSinkId(deviceId); } catch(e) {}
+  }
+}
+
+// ── BUS SYSTEM ──────────────────────────────────
+const busSources = {};
+let busChannel = null;
+let busWorkletReady = false;
+const BUS_BUFFER_SIZE = 8192;
+
+const busReceiverSABCode = `
+class BusReceiverSAB extends AudioWorkletProcessor {
+  constructor(options) {
+    super();
+    const { sab, bufferSize } = options.processorOptions;
+    this.indices = new Int32Array(sab, 0, 4);
+    this.samples = new Float32Array(sab, 16);
+    this.bufferSize = bufferSize;
+  }
+  process(inputs, outputs) {
+    const output = outputs[0][0];
+    if (!output) return true;
+    const writeIdx = Atomics.load(this.indices, 0);
+    const readIdx = Atomics.load(this.indices, 1);
+    let available = (writeIdx - readIdx + this.bufferSize) % this.bufferSize;
+    if (available >= output.length) {
+      for (let i = 0; i < output.length; i++) {
+        output[i] = this.samples[(readIdx + i) % this.bufferSize];
+      }
+      Atomics.store(this.indices, 1, (readIdx + output.length) % this.bufferSize);
+    }
+    return true;
+  }
+}
+registerProcessor('bus-receiver-sab', BusReceiverSAB);
+`;
+
+const busReceiverMPCode = `
+class BusReceiverMP extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.ring = new Float32Array(8192);
+    this.writeIdx = 0;
+    this.readIdx = 0;
+    this.bufferSize = 8192;
+    this.port.onmessage = (e) => {
+      const data = e.data;
+      for (let i = 0; i < data.length; i++) {
+        this.ring[(this.writeIdx + i) % this.bufferSize] = data[i];
+      }
+      this.writeIdx = (this.writeIdx + data.length) % this.bufferSize;
+    };
+  }
+  process(inputs, outputs) {
+    const output = outputs[0][0];
+    if (!output) return true;
+    let available = (this.writeIdx - this.readIdx + this.bufferSize) % this.bufferSize;
+    if (available >= output.length) {
+      for (let i = 0; i < output.length; i++) {
+        output[i] = this.ring[(this.readIdx + i) % this.bufferSize];
+      }
+      this.readIdx = (this.readIdx + output.length) % this.bufferSize;
+    }
+    return true;
+  }
+}
+registerProcessor('bus-receiver-mp', BusReceiverMP);
+`;
+
+async function initBusWorklets() {
+  if (busWorkletReady || !actx) return;
+  const useSAB = typeof SharedArrayBuffer !== 'undefined' && crossOriginIsolated;
+  const code = useSAB ? busReceiverSABCode : busReceiverMPCode;
+  const blob = new Blob([code], { type: 'application/javascript' });
+  const url = URL.createObjectURL(blob);
+  await actx.audioWorklet.addModule(url);
+  URL.revokeObjectURL(url);
+  busWorkletReady = true;
+}
+
+function initBusDiscovery() {
+  if (busChannel) return;
+  busChannel = new BroadcastChannel('bb-audio-bus');
+  busChannel.onmessage = (e) => {
+    const msg = e.data;
+    if (msg.type === 'announce' || msg.type === 'heartbeat') {
+      const isNew = !busSources[msg.id];
+      busSources[msg.id] = { id: msg.id, name: msg.name, ts: Date.now(), sab: msg.sab || null };
+      if (isNew) refreshBusOptions();
+    } else if (msg.type === 'leave') {
+      delete busSources[msg.id];
+      refreshBusOptions();
+      channels.forEach(ch => {
+        if (ch.busSourceId === msg.id) disconnectChannelBus(ch);
+      });
+    } else if (msg.type === 'audio') {
+      channels.forEach(ch => {
+        if (ch.busSourceId === msg.id && ch.busReceiverNode && ch.busReceiverNode.port) {
+          ch.busReceiverNode.port.postMessage(msg.samples);
+        }
+      });
+    }
+  };
+  busChannel.postMessage({ type: 'discover' });
+  setInterval(() => {
+    const now = Date.now();
+    let changed = false;
+    for (const id in busSources) {
+      if (now - busSources[id].ts > 6000) {
+        delete busSources[id];
+        changed = true;
+        channels.forEach(ch => {
+          if (ch.busSourceId === id) disconnectChannelBus(ch);
+        });
+      }
+    }
+    if (changed) refreshBusOptions();
+  }, 3000);
+}
+
+function refreshBusOptions() {
+  renderChannels();
+}
+
+async function connectChannelBus(ch, sourceId) {
+  disconnectChannelBus(ch);
+  const src = busSources[sourceId];
+  if (!src) return;
+  await initBusWorklets();
+  const useSAB = src.sab && typeof SharedArrayBuffer !== 'undefined' && crossOriginIsolated;
+  if (useSAB) {
+    ch.busReceiverNode = new AudioWorkletNode(actx, 'bus-receiver-sab', {
+      processorOptions: { sab: src.sab, bufferSize: BUS_BUFFER_SIZE },
+      outputChannelCount: [1]
+    });
+  } else {
+    ch.busReceiverNode = new AudioWorkletNode(actx, 'bus-receiver-mp', {
+      outputChannelCount: [1]
+    });
+    busChannel.postMessage({ type: 'subscribe', subscriberId: 'mixer_' + ch.id, sourceId: sourceId });
+  }
+  ch.busSourceId = sourceId;
+  ch.busReceiverNode.connect(ch.inputGain);
+}
+
+function disconnectChannelBus(ch) {
+  if (ch.busReceiverNode) {
+    try { ch.busReceiverNode.disconnect(); } catch(e) {}
+    ch.busReceiverNode = null;
+  }
+  if (ch.busSourceId) {
+    if (busChannel) busChannel.postMessage({ type: 'unsubscribe', sourceId: ch.busSourceId });
+    ch.busSourceId = null;
+  }
+}
+
+async function setChannelInput(id, val) {
+  const ch = channels.find(c => c.id === id);
+  if (!ch) return;
+  ensureAudio();
+  if (val.startsWith('bus:')) {
+    await connectChannelBus(ch, val.slice(4));
+  } else {
+    disconnectChannelBus(ch);
+  }
+}
+
+// ── METERING ────────────────────────────────────
+function drawMeters() {
+  const timeData = new Float32Array(analyser ? analyser.fftSize : 128);
+
+  if (analyser) {
+    analyser.getFloatTimeDomainData(timeData);
+    let peak = 0;
+    for (let i = 0; i < timeData.length; i++) peak = Math.max(peak, Math.abs(timeData[i]));
+    const db = 20 * Math.log10(Math.max(peak, 0.0001));
+    const pct = Math.max(0, Math.min(100, (db + 60) / 60 * 100));
+    const mL = document.getElementById('master-meter-l');
+    const mR = document.getElementById('master-meter-r');
+    if (mL) mL.style.height = pct + '%';
+    if (mR) mR.style.height = pct + '%';
+  }
+
+  for (const ch of channels) {
+    if (!ch.nodes.chAnalyser) continue;
+    const data = new Float32Array(ch.nodes.chAnalyser.fftSize);
+    ch.nodes.chAnalyser.getFloatTimeDomainData(data);
+    let peak = 0;
+    for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
+    const db = 20 * Math.log10(Math.max(peak, 0.0001));
+    const pct = Math.max(0, Math.min(100, (db + 60) / 60 * 100));
+    const mel = document.getElementById(ch.id + '-meter');
+    if (mel) {
+      mel.style.height = pct + '%';
+      mel.style.background = pct > 90 ? '#f44' : pct > 70 ? '#ea4' : '#4a4';
+    }
+  }
+
+  requestAnimationFrame(drawMeters);
+}
+
+// ── URL PRESETS ─────────────────────────────────
+function presetToHash() {
+  if (!channels.length) return '';
+  const segments = [];
+  for (const ch of channels) {
+    const p = ch.params;
+    let parts = [p.faderDb, p.pan, p.loGain, p.midGain, p.hiGain];
+    const isDefault = p.faderDb === 0 && p.pan === 0 && p.loGain === 0 && p.midGain === 0 && p.hiGain === 0;
+    const flags = (ch.muted ? 'M' : '') + (ch.soloed ? 'S' : '');
+    if (isDefault && !flags) {
+      segments.push('ch');
+    } else {
+      segments.push('ch' + flags + '.' + parts.join('.'));
+    }
+  }
+  return '#' + segments.join('-') + '-m.' + masterFaderDb;
+}
+
+function copyPresetUrl() {
+  const url = location.origin + location.pathname + presetToHash();
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.getElementById('btn-preset');
+    btn.textContent = '✓ COPIED';
+    setTimeout(() => { btn.textContent = '⎘ PRESET URL'; }, 1500);
+  });
+}
+
+function loadPresetFromHash() {
+  if (!location.hash || location.hash.length < 2) return false;
+  const segments = location.hash.slice(1).split('-');
+  if (!segments.length) return false;
+  let loaded = false;
+  for (const seg of segments) {
+    if (seg.startsWith('ch')) {
+      addChannel();
+      const ch = channels[channels.length - 1];
+      const flagStr = seg.slice(2).split('.')[0] || '';
+      if (flagStr.includes('M')) ch.muted = true;
+      if (flagStr.includes('S')) ch.soloed = true;
+      const dotPart = seg.includes('.') ? seg.slice(seg.indexOf('.') + 1) : '';
+      if (dotPart) {
+        const vals = dotPart.split('.').map(Number);
+        if (vals.length >= 1 && !isNaN(vals[0])) { ch.params.faderDb = vals[0]; ch.nodes.fader.gain.value = dbToGain(vals[0]); }
+        if (vals.length >= 2 && !isNaN(vals[1])) { ch.params.pan = vals[1]; ch.nodes.pan.pan.value = vals[1] / 100; }
+        if (vals.length >= 3 && !isNaN(vals[2])) { ch.params.loGain = vals[2]; ch.nodes.loEq.gain.value = vals[2]; }
+        if (vals.length >= 4 && !isNaN(vals[3])) { ch.params.midGain = vals[3]; ch.nodes.midEq.gain.value = vals[3]; }
+        if (vals.length >= 5 && !isNaN(vals[4])) { ch.params.hiGain = vals[4]; ch.nodes.hiEq.gain.value = vals[4]; }
+      }
+      loaded = true;
+    } else if (seg.startsWith('m.')) {
+      const val = parseFloat(seg.slice(2));
+      if (!isNaN(val)) {
+        masterFaderDb = val;
+        if (masterGain) masterGain.gain.value = dbToGain(val);
+      }
+    }
+  }
+  if (loaded) {
+    updateSoloState();
+    renderChannels();
+    render();
+  }
+  return loaded;
+}
+
+// ── INIT ────────────────────────────────────────
+initBusDiscovery();
+if (!loadPresetFromHash()) addChannel();
+renderChannels();
+render();
+drawMeters();
+
+window.addEventListener('resize', () => positionControls());
+</script>
+</body>
+</html>
