@@ -1506,13 +1506,15 @@ class BusSenderSAB extends AudioWorkletProcessor {
     this.bufferSize = bufferSize;
   }
   process(inputs) {
-    const input = inputs[0][0];
-    if (!input) return true;
+    const L = inputs[0][0];
+    const R = inputs[0][1] || L;
+    if (!L) return true;
     const writeIdx = Atomics.load(this.indices, 0);
-    for (let i = 0; i < input.length; i++) {
-      this.samples[(writeIdx + i) % this.bufferSize] = input[i];
+    for (let i = 0; i < L.length; i++) {
+      this.samples[(writeIdx + i * 2) % this.bufferSize] = L[i];
+      this.samples[(writeIdx + i * 2 + 1) % this.bufferSize] = R[i];
     }
-    Atomics.store(this.indices, 0, (writeIdx + input.length) % this.bufferSize);
+    Atomics.store(this.indices, 0, (writeIdx + L.length * 2) % this.bufferSize);
     return true;
   }
 }
@@ -1527,11 +1529,14 @@ class BusSenderMP extends AudioWorkletProcessor {
     this.port.onmessage = (e) => { this.active = e.data.active; };
   }
   process(inputs) {
-    const input = inputs[0][0];
-    if (!input || !this.active) return true;
-    const copy = new Float32Array(input.length);
-    copy.set(input);
-    this.port.postMessage(copy, [copy.buffer]);
+    const L = inputs[0][0];
+    const R = inputs[0][1] || L;
+    if (!L || !this.active) return true;
+    const copyL = new Float32Array(L.length);
+    const copyR = new Float32Array(R.length);
+    copyL.set(L);
+    copyR.set(R);
+    this.port.postMessage({ L: copyL, R: copyR }, [copyL.buffer, copyR.buffer]);
     return true;
   }
 }
@@ -1561,21 +1566,22 @@ async function initBusBroadcaster() {
   await initBusWorklets();
   const useSAB = typeof SharedArrayBuffer !== 'undefined' && crossOriginIsolated;
   if (useSAB) {
-    const byteLength = 16 + BUS_BUFFER_SIZE * 4;
+    const stereoBufferSize = BUS_BUFFER_SIZE * 2;
+    const byteLength = 16 + stereoBufferSize * 4;
     busSAB = new SharedArrayBuffer(byteLength);
     const indices = new Int32Array(busSAB, 0, 4);
     Atomics.store(indices, 0, 0);
     Atomics.store(indices, 1, 0);
-    Atomics.store(indices, 2, BUS_BUFFER_SIZE);
+    Atomics.store(indices, 2, stereoBufferSize);
     Atomics.store(indices, 3, 1);
     busBroadcasterNode = new AudioWorkletNode(audioCtx, 'bus-sender-sab', {
-      processorOptions: { sab: busSAB, bufferSize: BUS_BUFFER_SIZE }
+      processorOptions: { sab: busSAB, bufferSize: stereoBufferSize }
     });
   } else {
     busBroadcasterNode = new AudioWorkletNode(audioCtx, 'bus-sender-mp');
     busBroadcasterNode.port.onmessage = (e) => {
       if (busSubscribers.size > 0 && busChannel) {
-        busChannel.postMessage({ type: 'audio', id: BUS_ID, samples: e.data });
+        busChannel.postMessage({ type: 'audio', id: BUS_ID, samplesL: e.data.L, samplesR: e.data.R });
       }
     };
   }
@@ -1674,7 +1680,7 @@ function initBusChannel() {
   const announce = () => {
     busChannel.postMessage({
       type: 'announce', id: BUS_ID, name: BUS_NAME,
-      sab: busSAB || null
+      sab: busSAB || null, channels: 2
     });
   };
 
