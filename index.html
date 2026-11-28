@@ -102,6 +102,16 @@ body {
   color: #FFFFFF;
 }
 </style>
+<script>
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('.tool-link');
+  if (!link) return;
+  e.preventDefault();
+  const w = link.dataset.w || 900;
+  const h = link.dataset.h || 800;
+  window.open(link.href, '_blank', `width=${w},height=${h}`);
+});
+</script>
 </head>
 <body>
 <div id="crt">
@@ -111,55 +121,55 @@ body {
   </div>
 
   <div class="tools">
-    <a href="tapedeck.html" target="_blank" class="tool-link">
+    <a href="tapedeck.html" target="_blank" class="tool-link" data-w="584" data-h="916">
       <div class="tool-name">► BB TAPEDECK v1.0</div>
       <div class="tool-desc">Reel-to-reel recorder with variable speed, punch-in, and WAV export</div>
     </a>
-    <a href="sampler.html" target="_blank" class="tool-link">
+    <a href="sampler.html" target="_blank" class="tool-link" data-w="720" data-h="952">
       <div class="tool-name">► BB SAMPLER v1.0</div>
       <div class="tool-desc">Chromatic sampler with bit crush, sample rate reduction, and trim controls</div>
     </a>
-    <a href="edit.html" target="_blank" class="tool-link">
+    <a href="edit.html" target="_blank" class="tool-link" data-w="1126" data-h="985">
       <div class="tool-name">► BB EDIT v1.0</div>
       <div class="tool-desc">Stereo audio editor with waveform display, selection, fades, and normalize</div>
     </a>
-    <a href="systemtime.html" target="_blank" class="tool-link">
+    <a href="systemtime.html" target="_blank" class="tool-link" data-w="819" data-h="741">
       <div class="tool-name">► BB SYSTEM TIME v1.0</div>
       <div class="tool-desc">Schedule audio playback at a specific time with live system clock display</div>
     </a>
-    <a href="seq.html" target="_blank" class="tool-link">
+    <a href="seq.html" target="_blank" class="tool-link" data-w="560" data-h="979">
       <div class="tool-name">► BB SEQ v1.0</div>
       <div class="tool-desc">MIDI loop recorder with overdub, tempo control, and transpose</div>
     </a>
-    <a href="midi.html" target="_blank" class="tool-link">
+    <a href="midi.html" target="_blank" class="tool-link" data-w="656" data-h="813">
       <div class="tool-name">► BB MIDI MONITOR v1.0</div>
       <div class="tool-desc">Real-time MIDI input monitor with notes, CCs, clock/BPM, and channel activity</div>
     </a>
-    <a href="meters.html" target="_blank" class="tool-link">
+    <a href="meters.html" target="_blank" class="tool-link" data-w="591" data-h="1056">
       <div class="tool-name">► BB METERS v1.0</div>
       <div class="tool-desc">Spectrum analyzer, oscilloscope, spectrogram, Lissajous, VU meter, and quad view</div>
     </a>
-    <a href="synth.html" target="_blank" class="tool-link">
+    <a href="synth.html" target="_blank" class="tool-link" data-w="881" data-h="741">
       <div class="tool-name">► BB SYNTH v1.0</div>
       <div class="tool-desc">Wavetable synthesizer with ADSR, filter, 6 banks, wave morphing, and MIDI input</div>
     </a>
-    <a href="pedalboard.html" target="_blank" class="tool-link">
+    <a href="pedalboard.html" target="_blank" class="tool-link" data-w="882" data-h="779">
       <div class="tool-name">► BB PEDALBOARD v1.0</div>
       <div class="tool-desc">Multi-effects chain with Boss pedal emulations, drag-to-reorder, and cross-tab audio bus</div>
     </a>
-    <a href="deck.html" target="_blank" class="tool-link">
+    <a href="deck.html" target="_blank" class="tool-link" data-w="462" data-h="914">
       <div class="tool-name">► BB DECK v1.0</div>
       <div class="tool-desc">DJ deck with pitch control, two-band EQ, trim, waveform display, and MIDI mapping</div>
     </a>
-    <a href="sharedtime.html" target="_blank" class="tool-link">
+    <a href="sharedtime.html" target="_blank" class="tool-link" data-w="892" data-h="902">
       <div class="tool-name">► BB SHARED TIME v1.0</div>
       <div class="tool-desc">Server-synced clock with timezone support — same time on every device</div>
     </a>
-    <a href="comparator.html" target="_blank" class="tool-link">
+    <a href="comparator.html" target="_blank" class="tool-link" data-w="945" data-h="931">
       <div class="tool-name">► BB COMPARATOR v1.0</div>
       <div class="tool-desc">A/B track comparison with LUFS matching, blind test mode, and loop selection</div>
     </a>
-    <a href="mixer.html" target="_blank" class="tool-link">
+    <a href="mixer.html" target="_blank" class="tool-link" data-w="756" data-h="685">
       <div class="tool-name">► BB MIXER v1.0</div>
       <div class="tool-desc">Multi-channel mixer with 3-band EQ, pan, mute/solo, and cross-tab audio bus input</div>
     </a>
