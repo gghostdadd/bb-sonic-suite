@@ -1396,8 +1396,12 @@ async function detectOutputDevices() {
 }
 
 async function setOutputDevice() {
-  if (!audioCtx) return;
   const val = document.getElementById('output-select').value;
+  if (val === 'bus' && !audioCtx) {
+    audioCtx = new AudioContext({ sampleRate: sampleRate });
+    ensureOutputGain();
+  }
+  if (!audioCtx) return;
   if (val === 'bus') {
     if (!busOnly) {
       busOnly = true;

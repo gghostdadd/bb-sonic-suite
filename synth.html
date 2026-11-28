@@ -1936,8 +1936,9 @@ window.addEventListener('resize', scaleCrt);
 let busOnly = false;
 
 async function setSynthOutput() {
-  if (!audioCtx || !analyserNode) return;
   const val = document.getElementById('synth-output').value;
+  if (val === 'bus') ensureAudio();
+  if (!audioCtx || !analyserNode) return;
   if (val === 'bus') {
     if (!busOnly) {
       busOnly = true;
