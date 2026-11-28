@@ -979,9 +979,16 @@ function initBusDiscovery() {
   busChannel.onmessage = (e) => {
     const msg = e.data;
     if (msg.type === 'announce' || msg.type === 'heartbeat') {
-      const isNew = !busSources[msg.id];
+      const prev = busSources[msg.id];
+      const isNew = !prev;
       busSources[msg.id] = { id: msg.id, name: msg.name, ts: Date.now(), sab: msg.sab || null, channels: msg.channels || 1 };
-      if (isNew) refreshBusOptions();
+      if (isNew) {
+        refreshBusOptions();
+      } else if (msg.sab && (!prev.sab || prev.sab !== msg.sab)) {
+        channels.forEach(ch => {
+          if (ch.busSourceId === msg.id) connectChannelBus(ch, msg.id);
+        });
+      }
     } else if (msg.type === 'leave') {
       delete busSources[msg.id];
       refreshBusOptions();
@@ -1029,7 +1036,7 @@ async function connectChannelBus(ch, sourceId) {
   const useSAB = src.sab && typeof SharedArrayBuffer !== 'undefined' && crossOriginIsolated;
   if (useSAB) {
     ch.busReceiverNode = new AudioWorkletNode(actx, 'bus-receiver-sab', {
-      processorOptions: { sab: src.sab, bufferSize: BUS_BUFFER_SIZE, channels: src.channels || 1 },
+      processorOptions: { sab: src.sab, bufferSize: src.sab.byteLength > 16 ? (src.sab.byteLength - 16) / 4 : BUS_BUFFER_SIZE, channels: src.channels || 1 },
       outputChannelCount: [2]
     });
   } else {

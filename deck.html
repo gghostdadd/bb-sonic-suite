@@ -403,7 +403,6 @@ body {
         <option value="">— NONE —</option>
       </select>
       <button class="btn" onclick="detectMidi()" style="padding:4px 6px;font-size:11px;" title="Detect MIDI devices">⟳</button>
-      <span class="btn" style="padding:4px 8px;font-size:11px;visibility:hidden;">BUS</span>
       <span class="btn" style="padding:4px 8px;font-size:11px;visibility:hidden;">PFL</span>
     </div>
 
@@ -411,10 +410,10 @@ body {
       <label style="width:56px;text-align:right;">OUTPUT:</label>
       <select id="output-select" class="crt-select" style="width:150px;" onchange="setOutputDevice()">
         <option value="">DEFAULT</option>
+        <option value="bus">✦ BUS</option>
       </select>
       <button class="btn" onclick="detectOutputDevices()" style="padding:4px 6px;font-size:11px;" title="Detect output devices">⟳</button>
       <button class="btn" id="cue-toggle" onclick="toggleCueOut()" style="padding:4px 8px;font-size:11px;" title="Pre-fader listen (channels 3-4)">PFL</button>
-      <button class="btn" id="bus-toggle" onclick="toggleBus()" style="padding:4px 8px;font-size:11px;">BUS</button>
     </div>
 
 
@@ -691,7 +690,6 @@ function ensureAudioCtx() {
     audioCtx = new AudioContext();
     outputGainNode = audioCtx.createGain();
     if (!busOnly) outputGainNode.connect(audioCtx.destination);
-    ensureBusSender();
 
     trimGainNode = audioCtx.createGain();
     trimGainNode.gain.value = 1;
@@ -1299,6 +1297,7 @@ async function enumerateOutputDevices() {
     const devices = await navigator.mediaDevices.enumerateDevices();
     const sel = document.getElementById('output-select');
     const current = sel.value;
+    const wasBus = current === 'bus';
     sel.innerHTML = '<option value="">DEFAULT</option>';
     for (const d of devices) {
       if (d.kind !== 'audiooutput') continue;
@@ -1309,7 +1308,9 @@ async function enumerateOutputDevices() {
       opt.textContent = label;
       sel.appendChild(opt);
     }
-    if (current) sel.value = current;
+    sel.appendChild(Object.assign(document.createElement('option'), { value: 'bus', textContent: '✦ BUS' }));
+    if (wasBus) sel.value = 'bus';
+    else if (current) sel.value = current;
   } catch(e) {}
 }
 
@@ -1323,8 +1324,26 @@ async function detectOutputDevices() {
 
 async function setOutputDevice() {
   if (!audioCtx) return;
-  if (busOnly) return;
-  // tear down PFL when device changes so it re-inits for the new device
+  const val = document.getElementById('output-select').value;
+  if (val === 'bus') {
+    if (!busOnly) {
+      busOnly = true;
+      const finalNode = pflSetup ? pflMerger : outputGainNode;
+      try { finalNode.disconnect(audioCtx.destination); } catch(e) {}
+      await initBusBroadcaster();
+      connectBusSender();
+      announceBus();
+      startBusHeartbeat();
+    }
+    return;
+  }
+  if (busOnly) {
+    busOnly = false;
+    disconnectBusSender();
+    leaveBus();
+    const finalNode = pflSetup ? pflMerger : outputGainNode;
+    try { finalNode.connect(audioCtx.destination); } catch(e) {}
+  }
   if (pflSetup) {
     teardownMultichannelPFL();
     if (cueListening) {
@@ -1332,7 +1351,6 @@ async function setOutputDevice() {
       document.getElementById('cue-toggle').classList.remove('loop-active');
     }
   }
-  const val = document.getElementById('output-select').value;
   try {
     if (audioCtx.setSinkId) await audioCtx.setSinkId(val || '');
   } catch(e) {}
@@ -1407,26 +1425,6 @@ async function toggleCueOut() {
   const btn = document.getElementById('cue-toggle');
   btn.classList.toggle('loop-active', cueListening);
   pflGainNode.gain.setValueAtTime(cueListening ? 1 : 0, audioCtx.currentTime);
-}
-
-async function ensureBusSender() {
-  if (!audioCtx || !outputGainNode) return;
-  await initBusBroadcaster();
-  connectBusSender();
-}
-
-async function toggleBus() {
-  busOnly = !busOnly;
-  const btn = document.getElementById('bus-toggle');
-  btn.classList.toggle('loop-active', busOnly);
-  if (!audioCtx || !outputGainNode) return;
-  const finalNode = pflSetup ? pflMerger : outputGainNode;
-  if (busOnly) {
-    try { finalNode.disconnect(audioCtx.destination); } catch(e) {}
-  } else {
-    try { finalNode.connect(audioCtx.destination); } catch(e) {}
-    setOutputDevice();
-  }
 }
 
 navigator.mediaDevices?.addEventListener('devicechange', () => enumerateOutputDevices());
@@ -1536,22 +1534,35 @@ function disconnectBusSender() {
   try { outputGainNode.disconnect(busBroadcasterNode); } catch(e) {}
 }
 
+let busHeartbeatTimer = null;
+
+function announceBus() {
+  if (!busChannel || !busOnly) return;
+  busChannel.postMessage({
+    type: 'announce', id: BUS_ID, name: BUS_NAME,
+    sab: busSAB || null, channels: 2,
+    sampleRate: audioCtx ? audioCtx.sampleRate : null
+  });
+}
+
+function leaveBus() {
+  if (busHeartbeatTimer) { clearInterval(busHeartbeatTimer); busHeartbeatTimer = null; }
+  if (busChannel) busChannel.postMessage({ type: 'leave', id: BUS_ID });
+}
+
+function startBusHeartbeat() {
+  if (busHeartbeatTimer) clearInterval(busHeartbeatTimer);
+  busHeartbeatTimer = setInterval(announceBus, 3000);
+}
+
 function initBusChannel() {
   if (busChannel) return;
   busChannel = new BroadcastChannel('bb-audio-bus');
 
-  const announce = () => {
-    busChannel.postMessage({
-      type: 'announce', id: BUS_ID, name: BUS_NAME,
-      sab: busSAB || null, channels: 2,
-      sampleRate: audioCtx ? audioCtx.sampleRate : null
-    });
-  };
-
   busChannel.onmessage = (e) => {
     const msg = e.data;
     if (msg.type === 'discover') {
-      announce();
+      if (busOnly) announceBus();
     } else if (msg.type === 'subscribe' && msg.sourceId === BUS_ID) {
       busSubscribers.add(msg.subscriberId);
       if (busBroadcasterNode && busBroadcasterNode.port) {
@@ -1565,11 +1576,8 @@ function initBusChannel() {
     }
   };
 
-  announce();
-  setInterval(announce, 3000);
-
   window.addEventListener('beforeunload', () => {
-    busChannel.postMessage({ type: 'leave', id: BUS_ID });
+    if (busOnly) leaveBus();
   });
 }
 

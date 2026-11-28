@@ -530,12 +530,9 @@ input[type="range"]::-webkit-slider-thumb {
           <span class="param-label" style="width:32px;">OUTPUT</span>
           <select id="synth-output" class="crt-select" style="flex:1; min-width:0;" onchange="setSynthOutput()">
             <option value="">DEFAULT</option>
+            <option value="bus">✦ BUS</option>
           </select>
-        </div>
-        <div class="param-row">
-          <span class="param-label" style="width:32px;"></span>
           <button class="btn" onclick="detectOutputDevices()" style="font-size:10px;padding:3px 6px;">DETECT</button>
-          <button class="btn" id="bus-toggle" onclick="toggleBus()" style="font-size:10px;padding:3px 6px;">BUS</button>
         </div>
       </div>
     </div>
@@ -1940,23 +1937,24 @@ let busOnly = false;
 
 async function setSynthOutput() {
   if (!audioCtx || !analyserNode) return;
-  if (busOnly) return;
   const val = document.getElementById('synth-output').value;
-  try { analyserNode.connect(audioCtx.destination); } catch(e) {}
-  try { if (audioCtx.setSinkId) await audioCtx.setSinkId(val || ''); } catch(e) {}
-}
-
-function toggleBus() {
-  busOnly = !busOnly;
-  const btn = document.getElementById('bus-toggle');
-  btn.textContent = 'BUS';
-  btn.classList.toggle('bus-active', busOnly);
-  if (!audioCtx || !analyserNode) return;
-  if (busOnly) {
-    try { analyserNode.disconnect(audioCtx.destination); } catch(e) {}
+  if (val === 'bus') {
+    if (!busOnly) {
+      busOnly = true;
+      try { analyserNode.disconnect(audioCtx.destination); } catch(e) {}
+      await initBusBroadcaster();
+      connectBusSender();
+      announceBus();
+      startBusHeartbeat();
+    }
   } else {
-    try { analyserNode.connect(audioCtx.destination); } catch(e) {}
-    setSynthOutput();
+    if (busOnly) {
+      busOnly = false;
+      disconnectBusSender();
+      leaveBus();
+      try { analyserNode.connect(audioCtx.destination); } catch(e) {}
+    }
+    try { if (audioCtx.setSinkId) await audioCtx.setSinkId(val || ''); } catch(e) {}
   }
 }
 
@@ -1965,6 +1963,7 @@ async function enumerateOutputDevices() {
     const devices = await navigator.mediaDevices.enumerateDevices();
     const sel = document.getElementById('synth-output');
     const current = sel.value;
+    const wasBus = current === 'bus';
     sel.innerHTML = '<option value="">DEFAULT</option>';
     for (const d of devices) {
       if (d.kind !== 'audiooutput') continue;
@@ -1974,7 +1973,9 @@ async function enumerateOutputDevices() {
       opt.textContent = d.label || ('Output ' + d.deviceId.slice(0, 8));
       sel.appendChild(opt);
     }
-    if (current) sel.value = current;
+    sel.appendChild(Object.assign(document.createElement('option'), { value: 'bus', textContent: '✦ BUS' }));
+    if (wasBus) sel.value = 'bus';
+    else if (current) sel.value = current;
   } catch(e) {}
 }
 
@@ -2075,22 +2076,46 @@ async function initBusBroadcaster() {
     };
   }
 
-  analyserNode.connect(busBroadcasterNode);
+}
+
+function connectBusSender() {
+  if (!analyserNode || !busBroadcasterNode) return;
+  try { analyserNode.connect(busBroadcasterNode); } catch(e) {}
+}
+
+function disconnectBusSender() {
+  if (!busBroadcasterNode) return;
+  try { analyserNode.disconnect(busBroadcasterNode); } catch(e) {}
+}
+
+let busHeartbeatTimer = null;
+
+function announceBus() {
+  if (!busBroadcastChannel || !busOnly) return;
+  busBroadcastChannel.postMessage({
+    type: 'announce', id: BUS_ID, name: BUS_NAME,
+    sab: busSAB || null
+  });
+}
+
+function leaveBus() {
+  if (busHeartbeatTimer) { clearInterval(busHeartbeatTimer); busHeartbeatTimer = null; }
+  if (busBroadcastChannel) busBroadcastChannel.postMessage({ type: 'leave', id: BUS_ID });
+}
+
+function startBusHeartbeat() {
+  if (busHeartbeatTimer) clearInterval(busHeartbeatTimer);
+  busHeartbeatTimer = setInterval(announceBus, 3000);
 }
 
 function initBusChannel() {
   busBroadcastChannel = new BroadcastChannel('bb-audio-bus');
 
-  const announce = () => {
-    busBroadcastChannel.postMessage({
-      type: 'announce', id: BUS_ID, name: BUS_NAME,
-      sab: busSAB || null
-    });
-  };
-
   busBroadcastChannel.onmessage = (e) => {
     const msg = e.data;
-    if (msg.type === 'discover') announce();
+    if (msg.type === 'discover') {
+      if (busOnly) announceBus();
+    }
     if (msg.type === 'subscribe' && msg.sourceId === BUS_ID) {
       busSubscribers.add(msg.subscriberId);
       if (busBroadcasterNode && busBroadcasterNode.port) {
@@ -2105,21 +2130,10 @@ function initBusChannel() {
     }
   };
 
-  announce();
-  setInterval(announce, 3000);
-
   window.addEventListener('beforeunload', () => {
-    busBroadcastChannel.postMessage({ type: 'leave', id: BUS_ID });
+    if (busOnly) leaveBus();
   });
 }
-
-const origEnsureAudio = ensureAudio;
-ensureAudio = function() {
-  origEnsureAudio();
-  if (audioCtx && !busBroadcasterNode) {
-    initBusBroadcaster();
-  }
-};
 
 initBusChannel();
 
