@@ -1721,22 +1721,31 @@ const busReceiverSABCode = `
 class BusReceiverSAB extends AudioWorkletProcessor {
   constructor(options) {
     super();
-    const { sab, bufferSize } = options.processorOptions;
+    const { sab, bufferSize, channels } = options.processorOptions;
     this.indices = new Int32Array(sab, 0, 4);
     this.samples = new Float32Array(sab, 16);
     this.bufferSize = bufferSize;
+    this.channels = channels || 1;
   }
   process(inputs, outputs) {
     const output = outputs[0][0];
     if (!output) return true;
     const writeIdx = Atomics.load(this.indices, 0);
     const readIdx = Atomics.load(this.indices, 1);
+    const channels = this.channels;
+    const needed = output.length * channels;
     let available = (writeIdx - readIdx + this.bufferSize) % this.bufferSize;
-    if (available >= output.length) {
+    if (available >= needed) {
       for (let i = 0; i < output.length; i++) {
-        output[i] = this.samples[(readIdx + i) % this.bufferSize];
+        if (channels === 2) {
+          const L = this.samples[(readIdx + i * 2) % this.bufferSize];
+          const R = this.samples[(readIdx + i * 2 + 1) % this.bufferSize];
+          output[i] = (L + R) * 0.5;
+        } else {
+          output[i] = this.samples[(readIdx + i) % this.bufferSize];
+        }
       }
-      Atomics.store(this.indices, 1, (readIdx + output.length) % this.bufferSize);
+      Atomics.store(this.indices, 1, (readIdx + needed) % this.bufferSize);
     }
     return true;
   }
@@ -1887,7 +1896,7 @@ async function connectBusReceiver(sourceId) {
   const useSAB = src.sab && typeof SharedArrayBuffer !== 'undefined' && crossOriginIsolated;
   if (useSAB) {
     busReceiverNode = new AudioWorkletNode(audioCtx, 'bus-receiver-sab', {
-      processorOptions: { sab: src.sab, bufferSize: BUS_BUFFER_SIZE },
+      processorOptions: { sab: src.sab, bufferSize: src.sab.byteLength > 16 ? (src.sab.byteLength - 16) / 4 : BUS_BUFFER_SIZE, channels: src.channels || 1 },
       outputChannelCount: [1]
     });
   } else {
@@ -1959,7 +1968,7 @@ function initBusChannel() {
     if (msg.type === 'announce' || msg.type === 'heartbeat') {
       if (msg.id === BUS_ID) return;
       const isNew = !busSources[msg.id];
-      busSources[msg.id] = { id: msg.id, name: msg.name, ts: Date.now(), sab: msg.sab || null };
+      busSources[msg.id] = { id: msg.id, name: msg.name, ts: Date.now(), sab: msg.sab || null, channels: msg.channels || 1 };
       if (isNew) updateBusInputOptions();
     } else if (msg.type === 'leave') {
       delete busSources[msg.id];
@@ -1982,7 +1991,14 @@ function initBusChannel() {
       }
     } else if (msg.type === 'audio' && msg.id === busActiveSrc) {
       if (busReceiverNode && busReceiverNode.port) {
-        busReceiverNode.port.postMessage(msg.samples);
+        if (msg.samplesL) {
+          const L = msg.samplesL, R = msg.samplesR;
+          const mono = new Float32Array(L.length);
+          for (let i = 0; i < L.length; i++) mono[i] = (L[i] + R[i]) * 0.5;
+          busReceiverNode.port.postMessage(mono, [mono.buffer]);
+        } else {
+          busReceiverNode.port.postMessage(msg.samples);
+        }
       }
     }
   };
